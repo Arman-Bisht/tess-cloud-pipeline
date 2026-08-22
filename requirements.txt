@@ -1,0 +1,11 @@
+lightkurve
+astropy
+astroquery
+numpy
+scipy
+matplotlib
+requests
+tenacity
+functions-framework
+google-cloud-storage
+google-cloud-secret-manager
