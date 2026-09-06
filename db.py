@@ -119,6 +119,22 @@ def get_target_status(tic_id: str) -> Optional[str]:
     conn.close()
     return row['status'] if row else None
 
+def get_max_hd_number() -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT tic_id FROM targets WHERE tic_id LIKE 'HD %'")
+    rows = cursor.fetchall()
+    conn.close()
+    max_num = 10000
+    for r in rows:
+        try:
+            num = int(r['tic_id'].replace('HD ', ''))
+            if num > max_num:
+                max_num = num
+        except Exception:
+            pass
+    return max_num
+
 def save_discovery(tic_id: str, 
                    name: str, 
                    ra: float, 

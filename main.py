@@ -16,7 +16,7 @@ except Exception:
 
 from google.cloud import storage
 
-from db import upsert_target, get_target_status, save_discovery, update_status
+from db import upsert_target, get_target_status, save_discovery, update_status, get_max_hd_number
 from downloader import get_lightcurves, purge_cache_for_target
 from bls_engine import run_bls
 from single_transit_engine import run_single_transit
@@ -163,9 +163,70 @@ def serverless_entry(request):
     upload_db()
     
     return 'Batch processed successfully', 200
+    
+def run_local_scan(start_hd: Optional[int] = None, 
+                   end_hd: Optional[int] = None, 
+                   count: Optional[int] = None, 
+                   workers: int = 1):
+    """
+    Scans HD targets locally from start_hd up to end_hd (or count).
+    If start_hd is None, automatically detects the highest HD processed so far and resumes.
+    """
+    if start_hd is None:
+        start_hd = get_max_hd_number() + 1
+        
+    if end_hd is None:
+        if count is not None:
+            end_hd = start_hd + count - 1
+        else:
+            end_hd = start_hd + 50 # Default batch of 50
+            
+    logger.info(f"🔭 Starting Astrohunter scan from HD {start_hd} to HD {end_hd} (workers={workers})...")
+    
+    targets = [f"HD {i}" for i in range(start_hd, end_hd + 1)]
+    
+    # Filter out already processed targets
+    unprocessed = []
+    for tic in targets:
+        st = get_target_status(tic)
+        if not st or st in ["PENDING", "PROCESSING"]:
+            unprocessed.append(tic)
+            
+    logger.info(f"Identified {len(unprocessed)} targets to search in this run.")
+    
+    if workers > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(process_target, tic): tic for tic in unprocessed}
+            for future in concurrent.futures.as_completed(futures):
+                tic = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Error processing {tic}: {e}")
+    else:
+        for idx, tic in enumerate(unprocessed, 1):
+            logger.info(f"[{idx}/{len(unprocessed)}] Scanning {tic}...")
+            try:
+                process_target(tic)
+            except Exception as e:
+                logger.error(f"Error processing {tic}: {e}")
+                
+    logger.info("✨ Astrohunter scan finished successfully.")
 
 if __name__ == "__main__":
-    # Local CLI test execution
-    import sys
-    target = sys.argv[1] if len(sys.argv) > 1 else "HD 10002"
-    process_target(target)
+    import argparse
+    parser = argparse.ArgumentParser(description="Astrohunter Pro Exoplanet & Variable Star Hunter")
+    parser.add_argument("target", nargs="?", default=None, help="Target name to process (e.g. 'HD 10521' or 'TIC 278682559')")
+    parser.add_argument("--scan", action="store_true", help="Run local scan mode")
+    parser.add_argument("--start", type=int, default=None, help="Starting HD number (default: auto-resume)")
+    parser.add_argument("--end", type=int, default=None, help="Ending HD number")
+    parser.add_argument("--count", type=int, default=None, help="Number of HD stars to scan")
+    parser.add_argument("--workers", type=int, default=1, help="Concurrent workers (default 1)")
+    
+    args = parser.parse_args()
+    
+    if args.target and not args.scan and args.start is None:
+        process_target(args.target)
+    else:
+        run_local_scan(start_hd=args.start, end_hd=args.end, count=args.count, workers=args.workers)
+
