@@ -1,1 +1,2 @@
 name,ra,dec,tic_id,period,amplitude,depth,category,simbad_type,vsx_known,confidence,notes
+HD 10519,25.562159,-17.88874,HD 10519,10.64627,1.6e-05,3e-05,DISCOVERY_UNRECORDED_VARIABLE_STAR,SB* G2/3V,NO,Tier A,"SDE=21.9, Sectors=3,30,97"
