@@ -3,16 +3,19 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import lightkurve as lk
+import threading
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from config import DISCOVERIES_DIR
 
-def save_diagnostic_plot(tic_id: str, 
-                         category: str, 
-                         lc_flat: lk.LightCurve, 
-                         lc_unflat: lk.LightCurve, 
-                         best_res: Dict[str, Any],
-                         sectors: Optional[List[int]] = None) -> str:
+_plot_lock = threading.Lock()
+
+def _render_diagnostic_plot(tic_id: str, 
+                            category: str, 
+                            lc_flat: lk.LightCurve, 
+                            lc_unflat: lk.LightCurve, 
+                            best_res: Dict[str, Any],
+                            sectors: Optional[List[int]] = None) -> str:
     """
     Generates publication-quality 5-Panel Diagnostic Sheet meeting Section 5.2 specification:
     Panel 1: Raw / Unflattened LC
@@ -239,3 +242,13 @@ def save_diagnostic_plot(tic_id: str,
     plt.savefig(filename, dpi=150)
     plt.close(fig)
     return str(filename)
+
+def save_diagnostic_plot(tic_id: str, 
+                         category: str, 
+                         lc_flat: lk.LightCurve, 
+                         lc_unflat: lk.LightCurve, 
+                         best_res: Dict[str, Any],
+                         sectors: Optional[List[int]] = None) -> str:
+    """Thread-safe wrapper around _render_diagnostic_plot."""
+    with _plot_lock:
+        return _render_diagnostic_plot(tic_id, category, lc_flat, lc_unflat, best_res, sectors)
