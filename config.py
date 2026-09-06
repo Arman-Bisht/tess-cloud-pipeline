@@ -26,6 +26,19 @@ LS_MAX_FREQ = 30.0
 LS_FAP_THRESHOLD = 1e-5  # Final cataloging threshold
 LS_FAP_SWEEP = 1e-3      # Initial discovery sweep threshold
 
+# Load local .env file if present (for local execution)
+env_file = BASE_DIR / ".env"
+if env_file.exists():
+    try:
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    k, v = line.split('=', 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    except Exception:
+        pass
+
 # Webhook Config
 ENABLE_DISCORD = True
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
