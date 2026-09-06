@@ -98,8 +98,17 @@ def check_catalog(ra: float, dec: float, category: str, period: Optional[float])
             else:
                 info["simbad_text"] = "✅ Star listed"
                 
-            # Check if SIMBAD already classifies it as variable, binary, or planet
-            if any(k in otype.upper() for k in ['EB', 'V*', 'PULS', 'PLANET', 'ECL']):
+            # Check if SIMBAD classifies it as a known binary or known variable/planet
+            clean_otype = otype.upper().replace(' ', '')
+            binary_flags = ['SB*', 'SB', '**', 'EB*', 'EL*', 'BY*', 'RS*', 'ROTV*', 'CANDIDATE_EB*', 'CANDIDATE_**', 'DOUBLE', 'SPECTROSCOPIC', 'ECLIPSING']
+            var_flags = ['V*', 'PULS', 'PLANET', 'ECL']
+            
+            if any(k in clean_otype for k in binary_flags):
+                info["is_known"] = True
+                info["is_known_binary"] = True
+                info["known_label"] = "KNOWN_BINARY_PHOTOMETRIC_VAR"
+                info["simbad_text"] = f"✅ Known Binary ({otype} {sptype})"
+            elif any(k in clean_otype for k in var_flags):
                 info["is_known"] = True
                 info["known_label"] = f"KNOWN_SIMBAD_{otype.replace('*','').replace('?','')}"
     except Exception as e:

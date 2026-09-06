@@ -102,8 +102,8 @@ def process_target(tic_id: str):
         update_status(tic_id, final_status)
         save_discovery(tic_id, tic_id, ra, dec, final_status, best_res, catalog_info, plot_path, sectors)
         
-        # 6. Dispatch Multi-Channel Alerts if Unrecorded Discovery (Spec 4.2 & 5.1)
-        if "UNRECORDED" in final_status:
+        # 6. Dispatch Multi-Channel Alerts if Unrecorded Discovery or Known Binary (Spec 4.2 & 5.1)
+        if "UNRECORDED" in final_status or "KNOWN_BINARY" in final_status:
             dispatch_alert(tic_id, tic_id, final_status, best_res, catalog_info, plot_path, sectors)
             
         # 7. Guaranteed Immediate Cache Cleanup (Spec 3.2)

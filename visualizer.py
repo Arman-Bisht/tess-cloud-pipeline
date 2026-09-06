@@ -86,35 +86,12 @@ def save_diagnostic_plot(tic_id: str,
     add_corner_annotations(ax2)
 
     # ==========================================
-    # Panel 3: Phased LC (2 cycles side-by-side)
+    # Panel 3: Phased LC (Strictly 2 cycles in [0, 2])
     # ==========================================
     ax3 = fig.add_subplot(gs[1, 1])
-    if period is not None and epoch is not None:
-        folded = lc_flat.fold(period=period, epoch_time=epoch)
-        ph = folded.time.value
-        flx = folded.flux.value
-        # Plot 2 cycles side-by-side (phase 0 to 2)
-        ph_2cycle = np.concatenate([ph, ph + 1.0])
-        flx_2cycle = np.concatenate([flx, flx])
-        ax3.plot(ph_2cycle, flx_2cycle, '.k', markersize=2, alpha=0.25)
-        
-        # Binned average overplotted
-        try:
-            binned = folded.bin(time_bin_size=period/80)
-            b_ph = binned.time.value
-            b_flx = binned.flux.value
-            b_ph_2 = np.concatenate([b_ph, b_ph + 1.0])
-            b_flx_2 = np.concatenate([b_flx, b_flx])
-            ax3.plot(b_ph_2, b_flx_2, 'ro', markersize=3, label='Binned')
-        except Exception:
-            pass
-        ax3.set_xlim(-0.2, 1.8)
-        ax3.set_title(f"Panel 3: Phased Light Curve (2 Cycles, P={period:.4f} d)", fontsize=11, fontweight='bold')
-        ax3.set_xlabel("Phase (0 to 2)", fontsize=9)
-        ax3.set_ylabel("Normalized Flux", fontsize=9)
-    elif "SINGLE_TRANSIT" in category and 't_zoom' in best_res:
+    if "SINGLE_TRANSIT" in category and 't_zoom' in best_res:
         ax3.plot(best_res['t_zoom'], best_res['y_zoom'], '.k', markersize=3, alpha=0.4)
-        ax3.plot(best_res['t_zoom'], best_res['model_flux'], 'r-', lw=2, label='Trapezoid Fit')
+        ax3.plot(best_res['t_zoom'], best_res['model_flux'], 'r-', lw=2, label=best_res.get('fit_method', 'Transit Fit'))
         ax3.set_title(f"Panel 3: Single Transit Zoom & Fit (t0={epoch:.3f})", fontsize=11, fontweight='bold')
         ax3.set_xlabel("Time (BJD)", fontsize=9)
         ax3.set_ylabel("Flux", fontsize=9)
@@ -126,16 +103,44 @@ def save_diagnostic_plot(tic_id: str,
         ax3.set_xlabel("Time (BJD)", fontsize=9)
         ax3.set_ylabel("Magnified Flux", fontsize=9)
         ax3.legend(loc='upper right', fontsize=8)
-    else:
-        # Variable star phased
-        if period is not None:
-            folded = lc_unflat.fold(period=period)
-            ph = folded.time.value
-            flx = folded.flux.value
-            ax3.plot(np.concatenate([ph, ph+1.0]), np.concatenate([flx, flx]), '.k', markersize=2, alpha=0.3)
-            ax3.set_title(f"Panel 3: Phased Variable Light Curve (P={period:.4f} d)", fontsize=11, fontweight='bold')
-            ax3.set_xlabel("Phase", fontsize=9)
-            ax3.set_ylabel("Normalized Flux", fontsize=9)
+    elif period is not None:
+        # Strictly normalized phase wrapping across [0, 2] (Two Cycles)
+        lc_src = lc_unflat if ("VARIABLE" in category or "BINARY" in category) else lc_flat
+        t_src = lc_src.time.value
+        flx_src = lc_src.flux.value
+        mask_src = np.isfinite(t_src) & np.isfinite(flx_src)
+        t_c, flx_c = t_src[mask_src], flx_src[mask_src]
+        
+        t0_ref = epoch if epoch is not None else t_c[0]
+        # Modulo phase strictly in [0, 1)
+        phase_1c = ((t_c - t0_ref) % period) / period
+        
+        # Overplot two consecutive cycles in [0, 2)
+        phase_2c = np.concatenate([phase_1c, phase_1c + 1.0])
+        flux_2c = np.concatenate([flx_c, flx_c])
+        ax3.plot(phase_2c, flux_2c, '.k', markersize=2, alpha=0.2)
+        
+        # Binned median overplotted
+        nbins = 60
+        bin_edges = np.linspace(0, 1, nbins + 1)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        binned_flux = []
+        for i in range(nbins):
+            in_b = (phase_1c >= bin_edges[i]) & (phase_1c < bin_edges[i+1])
+            binned_flux.append(np.median(flx_c[in_b]) if np.any(in_b) else np.nan)
+        binned_flux = np.array(binned_flux)
+        valid_b = np.isfinite(binned_flux)
+        
+        if np.any(valid_b):
+            b_ph_2c = np.concatenate([bin_centers[valid_b], bin_centers[valid_b] + 1.0])
+            b_flx_2c = np.concatenate([binned_flux[valid_b], binned_flux[valid_b]])
+            ax3.plot(b_ph_2c, b_flx_2c, 'ro', markersize=3.5, label='Binned Median')
+            ax3.legend(loc='upper right', fontsize=8)
+            
+        ax3.set_xlim(-0.05, 2.05)
+        ax3.set_title(f"Panel 3: Phased Light Curve (2 Cycles, P={period:.4f} d)", fontsize=11, fontweight='bold')
+        ax3.set_xlabel("Phase (0 to 2)", fontsize=9)
+        ax3.set_ylabel("Normalized Flux", fontsize=9)
     add_corner_annotations(ax3)
 
     # ==========================================

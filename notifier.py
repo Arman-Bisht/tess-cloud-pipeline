@@ -41,6 +41,8 @@ def format_alert_message(target_name: str,
         header = f"🌌 SINGLE TRANSIT CANDIDATE: {target_name}"
     elif "MICROLENSING" in category:
         header = f"🔭 NEW MICROLENSING EVENT: {target_name}"
+    elif "KNOWN_BINARY" in category:
+        header = f"🔭 KNOWN BINARY PHOTOMETRIC CONFIRMATION: {target_name}"
     else:
         header = f"🌟 NEW VARIABLE/EB FOUND: {target_name}"
 
