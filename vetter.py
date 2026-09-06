@@ -73,15 +73,18 @@ def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Opt
                 row_c = np.array(getattr(lc, row_name).value, dtype=float)
                 break
                 
-        if col_c is None or row_c is None or period is None or epoch is None or duration is None:
-            return True, "No centroid data (Passed)"
+        if col_c is None or row_c is None:
+            return True, "No centroid columns (QLP/FFI cadence) - Passed (monitor with TPF)"
+            
+        if period is None or epoch is None or duration is None:
+            return True, "Non-periodic event - Centroid Passed"
             
         t = lc.time.value
         mask = np.isfinite(t) & np.isfinite(col_c) & np.isfinite(row_c)
         t, col_c, row_c = t[mask], col_c[mask], row_c[mask]
         
         if len(t) < 50:
-            return True, "Sparse centroid data (Passed)"
+            return True, "Centroid NaN-filled (QLP/FFI) - Passed (monitor with TPF)"
             
         phase = ((t - epoch + 0.5 * period) % period) / period - 0.5
         in_transit = np.abs(phase) < (duration / (2.0 * period))

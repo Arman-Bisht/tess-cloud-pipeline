@@ -33,11 +33,27 @@ def trapezoid_transit_model(t: np.ndarray, t0: float, depth: float, duration: fl
         
     return flux
 
+def mandel_agol_approx_model(t: np.ndarray, t0: float, depth: float, duration: float, u1: float = 0.3, u2: float = 0.3, baseline: float = 1.0) -> np.ndarray:
+    """
+    Analytic limb-darkened transit model approximation (Mandel & Agol 2002).
+    Includes quadratic limb darkening parameters (u1, u2) producing curved ingress/egress shoulders.
+    """
+    z = np.abs(t - t0) / np.maximum(duration / 2.0, 1e-4)
+    flux = np.full_like(t, baseline, dtype=float)
+    in_transit = z < 1.0
+    if np.any(in_transit):
+        mu = np.sqrt(np.clip(1.0 - z[in_transit]**2, 0.0, 1.0))
+        ld_profile = 1.0 - u1 * (1.0 - mu) - u2 * (1.0 - mu)**2
+        ld_norm = max(0.1, 1.0 - u1 - u2)
+        scale = ld_profile / ld_norm
+        flux[in_transit] = baseline - depth * np.clip(scale, 0.0, 1.2)
+    return flux
+
 def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
     """
     Detects solitary transit events (planets with orbits > 27 days).
     Pass 1: Rolling minimum threshold search on wide-flattened lightcurve.
-    Pass 2: Trapezoid / transit morphology fit (durations up to 0.5 days).
+    Pass 2: Mandel-Agol limb-darkened transit fit, with automatic fallback to Trapezoid if divergence occurs.
     """
     try:
         t = lc_wide_flat.time.value
@@ -52,12 +68,11 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         med_flux = np.nanmedian(y)
         
         # Pass 1: Rolling window search for deep, localized dips using uniform_filter1d
-        # mode='reflect' prevents boundary zero-padding artifacts
         window_size = 15
         rolling_mean = uniform_filter1d(y, size=window_size, mode='reflect')
         dip_depths = med_flux - rolling_mean
         
-        # Exclude the first and last 0.5 days from edge effects
+        # Exclude the first and last 0.4 days from edge effects
         valid_time_mask = (t >= t[0] + 0.4) & (t <= t[-1] - 0.4)
         if not np.any(valid_time_mask):
             return None
@@ -80,61 +95,80 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         if len(t_zoom) < 30:
             return None
             
-        # Pass 2: Fit trapezoid model
-        # Test durations up to 0.5 days (12 hours) (Spec 1.1)
-        p0 = [candidate_t0, float(max_dip), 0.15, 0.2, med_flux]
-        bounds = (
-            [candidate_t0 - 0.2, 0.0005, 0.02, 0.05, med_flux - 0.01],
-            [candidate_t0 + 0.2, 0.50, 0.50, 0.45, med_flux + 0.01]
-        )
+        # Pass 2: Fit Transit Model (Mandel-Agol first, fallback to Trapezoid)
+        model_flux = None
+        fit_t0 = candidate_t0
+        fit_depth = float(max_dip)
+        fit_duration = 0.15
+        fit_ingress = 0.2
+        fit_baseline = med_flux
+        fit_method = "Trapezoid"
+        fit_succeeded = False
         
+        # 1. Attempt Mandel-Agol limb-darkened fit first
         try:
-            popt, pcov = curve_fit(
-                trapezoid_transit_model, 
-                t_zoom, 
-                y_zoom, 
-                p0=p0, 
-                bounds=bounds, 
-                maxfev=2000
+            ma_p0 = [candidate_t0, float(max_dip), 0.15, 0.3, 0.3, med_flux]
+            ma_bounds = (
+                [candidate_t0 - 0.2, 0.0005, 0.02, 0.0, 0.0, med_flux - 0.01],
+                [candidate_t0 + 0.2, 0.50, 0.50, 0.8, 0.8, med_flux + 0.01]
             )
-            fit_t0, fit_depth, fit_duration, fit_ingress, fit_baseline = popt
-            model_flux = trapezoid_transit_model(t_zoom, *popt)
-            residuals = y_zoom - model_flux
-            chi2 = np.sum(residuals**2) / max(1, len(y_zoom) - 5)
-            
-            # Null model (flat baseline)
-            null_chi2 = np.sum((y_zoom - fit_baseline)**2) / max(1, len(y_zoom) - 1)
-            delta_chi2 = null_chi2 - chi2
-            
-            # Transit SNR
-            in_transit_mask = np.abs(t_zoom - fit_t0) <= (fit_duration / 2.0)
-            n_in_transit = np.sum(in_transit_mask)
-            snr = (fit_depth / std_flux) * np.sqrt(max(1, n_in_transit))
-            
-            # Approximate impact parameter b from ingress duration
-            b_param = float(np.sqrt(np.clip(1.0 - 2.0 * fit_ingress, 0.0, 0.95)))
-            
-            # Vetting: must show substantial delta_chi2 and SNR >= 6.0
-            if snr >= 6.0 and delta_chi2 > 0:
-                return {
-                    "epoch": float(fit_t0),
-                    "depth": float(fit_depth),
-                    "duration": float(fit_duration), # days
-                    "duration_hours": float(fit_duration * 24.0),
-                    "ingress_ratio": float(fit_ingress),
-                    "baseline": float(fit_baseline),
-                    "snr": float(snr),
-                    "sde": float(snr * 1.5), # Equivalent SDE metric for alerts
-                    "period": None, # Solitary transit
-                    "impact_parameter": b_param,
-                    "t_zoom": t_zoom,
-                    "y_zoom": y_zoom,
-                    "model_flux": model_flux,
-                    "fit_params": popt
-                }
-        except Exception as e:
-            logger.debug(f"Single transit curve_fit failed: {e}")
+            popt_ma, _ = curve_fit(mandel_agol_approx_model, t_zoom, y_zoom, p0=ma_p0, bounds=ma_bounds, maxfev=1500)
+            fit_t0, fit_depth, fit_duration, _, _, fit_baseline = popt_ma
+            model_flux = mandel_agol_approx_model(t_zoom, *popt_ma)
+            fit_method = "Mandel-Agol (Limb Darkened)"
+            fit_succeeded = True
+        except Exception as ma_err:
+            logger.debug(f"Mandel-Agol fit failed to converge ({ma_err}). Falling back to robust Trapezoid fit.")
+
+        # 2. Fallback to Trapezoid fit if Mandel-Agol failed
+        if not fit_succeeded:
+            try:
+                trap_p0 = [candidate_t0, float(max_dip), 0.15, 0.2, med_flux]
+                trap_bounds = (
+                    [candidate_t0 - 0.2, 0.0005, 0.02, 0.05, med_flux - 0.01],
+                    [candidate_t0 + 0.2, 0.50, 0.50, 0.45, med_flux + 0.01]
+                )
+                popt_trap, _ = curve_fit(trapezoid_transit_model, t_zoom, y_zoom, p0=trap_p0, bounds=trap_bounds, maxfev=2000)
+                fit_t0, fit_depth, fit_duration, fit_ingress, fit_baseline = popt_trap
+                model_flux = trapezoid_transit_model(t_zoom, *popt_trap)
+                fit_method = "Trapezoid (Fallback)"
+                fit_succeeded = True
+            except Exception as trap_err:
+                logger.debug(f"Trapezoid fit also failed: {trap_err}")
+                return None
+
+        if not fit_succeeded or model_flux is None:
             return None
+            
+        residuals = y_zoom - model_flux
+        chi2 = np.sum(residuals**2) / max(1, len(y_zoom) - 5)
+        null_chi2 = np.sum((y_zoom - fit_baseline)**2) / max(1, len(y_zoom) - 1)
+        delta_chi2 = null_chi2 - chi2
+        
+        # Transit SNR
+        in_transit_mask = np.abs(t_zoom - fit_t0) <= (fit_duration / 2.0)
+        n_in_transit = np.sum(in_transit_mask)
+        snr = (fit_depth / std_flux) * np.sqrt(max(1, n_in_transit))
+        
+        b_param = float(np.sqrt(np.clip(1.0 - 2.0 * fit_ingress, 0.0, 0.95)))
+        
+        if snr >= 6.0 and delta_chi2 > 0:
+            return {
+                "epoch": float(fit_t0),
+                "depth": float(fit_depth),
+                "duration": float(fit_duration), # days
+                "duration_hours": float(fit_duration * 24.0),
+                "ingress_ratio": float(fit_ingress),
+                "baseline": float(fit_baseline),
+                "snr": float(snr),
+                "sde": float(snr * 1.5),
+                "period": None,
+                "impact_parameter": b_param,
+                "fit_method": fit_method,
+                "t_zoom": t_zoom,
+                "y_zoom": y_zoom,
+                "model_flux": model_flux
+            }
             
         return None
     except Exception as e:

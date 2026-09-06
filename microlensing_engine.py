@@ -81,9 +81,15 @@ def run_microlensing(lc_unflat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         f_max = (med_flux + peak_amp) / med_flux
         approx_u0 = min(1.0, max(0.01, 1.0 / f_max))
         p0 = [candidate_t0, approx_u0, 3.0, med_flux]
+        
+        # Lock tE to physically plausible bounds for TESS sectors
+        # A single TESS sector is ~27 days; a tE > 50 days cannot be distinguished from a trend
+        total_time_span = float(t_zoom[-1] - t_zoom[0])
+        max_phys_tE = min(50.0, max(5.0, total_time_span * 1.2))
+        
         bounds = (
-            [candidate_t0 - 2.0, 0.001, 0.4, med_flux - 0.05],
-            [candidate_t0 + 2.0, 1.5, 220.0, med_flux + 0.05]
+            [candidate_t0 - 2.0, 0.001, 0.5, med_flux - 0.05],
+            [candidate_t0 + 2.0, 1.5, max_phys_tE, med_flux + 0.05]
         )
         
         try:
@@ -97,9 +103,13 @@ def run_microlensing(lc_unflat: lk.LightCurve) -> Optional[Dict[str, Any]]:
             )
             fit_t0, fit_u0, fit_tE, fit_F0 = popt
             
+            # Discard if fit pegged against the boundary (unconstrained fit on noisy flat data)
+            if fit_tE >= (max_phys_tE - 0.5) or fit_tE <= 0.51:
+                logger.debug(f"Candidate at t0={candidate_t0:.2f} pegged at tE boundary ({fit_tE:.2f} d). Discarded.")
+                return None
+                
             # Discard based on Einstein crossing time tE criteria:
-            # Must be 0.5 days <= tE <= 200 days
-            if fit_tE < 0.5 or fit_tE > 200.0:
+            if fit_tE < 0.5 or fit_tE > 50.0:
                 return None
                 
             model_flux = paczynski_model(t_zoom, *popt)
