@@ -9,3 +9,4 @@ tenacity
 functions-framework
 google-cloud-storage
 google-cloud-secret-manager
+psutil
