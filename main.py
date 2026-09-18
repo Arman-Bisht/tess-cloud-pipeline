@@ -224,6 +224,67 @@ def run_local_scan(start_hd: Optional[int] = None,
                 
     logger.info("✨ Astrohunter scan finished successfully.")
 
+def print_summary():
+    """Prints a formatted summary of the discovery catalog and batch progress."""
+    import pandas as pd
+    import sqlite3
+    from config import MASTER_CSV_PATH, DB_PATH
+    
+    total_stars = 0
+    if DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM targets WHERE status NOT IN ('PENDING', 'PROCESSING')")
+            total_stars = c.fetchone()[0]
+            conn.close()
+        except Exception:
+            pass
+
+    df = pd.DataFrame()
+    if MASTER_CSV_PATH.exists():
+        try:
+            df = pd.read_csv(MASTER_CSV_PATH)
+        except Exception:
+            pass
+            
+    n_disc = len(df)
+    unrec_var = len(df[df['category'] == 'DISCOVERY_UNRECORDED_VARIABLE_STAR']) if not df.empty else 0
+    unrec_eb = len(df[df['category'] == 'DISCOVERY_UNRECORDED_ECLIPSING_BINARY']) if not df.empty else 0
+    unrec_transit = len(df[df['category'] == 'DISCOVERY_UNRECORDED_SINGLE_TRANSIT_CANDIDATE']) if not df.empty else 0
+    known_bin = len(df[df['category'] == 'KNOWN_BINARY_PHOTOMETRIC_VAR']) if not df.empty else 0
+    benchmarks = n_disc - (unrec_var + unrec_eb + unrec_transit + known_bin)
+
+    pct_50 = min(100.0, (n_disc / 50.0) * 100.0)
+    pct_100 = min(100.0, (n_disc / 100.0) * 100.0)
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+    bar_len = 25
+    filled_50 = int((pct_50 / 100.0) * bar_len)
+    bar_50 = "=" * filled_50 + " " * (bar_len - filled_50)
+
+    print("\n" + "=" * 62)
+    print("ASTROHUNTER PRO -- DISCOVERY CATALOG STATUS")
+    print("=" * 62)
+    print(f"Total Stars Analyzed:      {total_stars}")
+    print(f"Total Discoveries Logged:  {n_disc}")
+    print("-" * 62)
+    print("Astrophysical Breakdown:")
+    print(f"  [+] Single-Transit Planet Candidates:  {unrec_transit}")
+    print(f"  [+] Unrecorded Variable Stars:          {unrec_var}")
+    print(f"  [+] Unrecorded Eclipsing Binaries:     {unrec_eb}")
+    print(f"  [*] Known Binary Confirmations:        {known_bin}")
+    print(f"  [*] Known Reference Benchmarks:        {benchmarks}")
+    print("-" * 62)
+    print("Batch Progress (Goal: 50-100 datasets):")
+    print(f"  Target 50:  [{bar_50}] {n_disc}/50 ({pct_50:.1f}%)")
+    print(f"  Target 100: {n_disc}/100 ({pct_100:.1f}%)")
+    print("=" * 62 + "\n")
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Astrohunter Pro Exoplanet & Variable Star Hunter")
@@ -233,11 +294,15 @@ if __name__ == "__main__":
     parser.add_argument("--end", type=int, default=None, help="Ending HD number")
     parser.add_argument("--count", type=int, default=None, help="Number of HD stars to scan")
     parser.add_argument("--workers", type=int, default=1, help="Concurrent workers (default 1)")
+    parser.add_argument("--summary", action="store_true", help="Show discovery catalog summary & progress towards 50-100 batch")
     
     args = parser.parse_args()
     
-    if args.target and not args.scan and args.start is None:
+    if args.summary:
+        print_summary()
+    elif args.target and not args.scan and args.start is None:
         process_target(args.target)
     else:
         run_local_scan(start_hd=args.start, end_hd=args.end, count=args.count, workers=args.workers)
+
 
