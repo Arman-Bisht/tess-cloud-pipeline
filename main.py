@@ -16,7 +16,7 @@ except Exception:
 
 from google.cloud import storage
 
-from db import upsert_target, get_target_status, save_discovery, update_status, get_max_hd_number
+from db import upsert_target, get_target_status, save_discovery, update_status, get_max_hd_number, get_connection
 from downloader import get_lightcurves, purge_cache_for_target
 from bls_engine import run_bls
 from single_transit_engine import run_single_transit
@@ -183,14 +183,25 @@ def run_local_scan(start_hd: Optional[int] = None,
             
     logger.info(f"🔭 Starting Astrohunter scan from HD {start_hd} to HD {end_hd} (workers={workers})...")
     
+    # 1. Prepend any targets already marked PENDING in the SQLite database
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT tic_id FROM targets WHERE status = 'PENDING'")
+    pending_db = [r['tic_id'] for r in c.fetchall()]
+    conn.close()
+
+    # 2. Add sequential HD range
     targets = [f"HD {i}" for i in range(start_hd, end_hd + 1)]
     
-    # Filter out already processed targets
+    # Filter out already processed targets, deduplicating order
     unprocessed = []
-    for tic in targets:
-        st = get_target_status(tic)
-        if not st or st in ["PENDING", "PROCESSING"]:
-            unprocessed.append(tic)
+    seen = set()
+    for tic in pending_db + targets:
+        if tic not in seen:
+            seen.add(tic)
+            st = get_target_status(tic)
+            if not st or st in ["PENDING", "PROCESSING"]:
+                unprocessed.append(tic)
             
     logger.info(f"Identified {len(unprocessed)} targets to search in this run.")
     
