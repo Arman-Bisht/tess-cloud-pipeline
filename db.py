@@ -2,6 +2,7 @@ import sqlite3
 import csv
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+import numpy as np
 from config import DB_PATH, MASTER_CSV_PATH
 
 def get_connection():
@@ -178,20 +179,29 @@ def save_discovery(tic_id: str,
     conn.commit()
     conn.close()
     
-    # Maintain Master CSV (Spec 3.4)
-    # columns: name, ra, dec, tic_id, period, amplitude, depth, category, simbad_type, vsx_known, confidence, notes
+    # Maintain Master CSV with clean physical parameters matching master_discoveries.csv
+    # columns: name, tic_id, gaia_dr3_id, ra, dec, period, amplitude, depth, category, r_star_rsun, r_comp_rjup, simbad_type, vsx_known, confidence, notes
+    gaia_dr3_id = catalog_info.get('gaia_dr3_id', 'N/A')
+    r_star = metrics.get('r_star_rsun', 1.0)
+    r_comp = None
+    if depth and depth > 0 and depth < 0.50:
+        r_comp = round((r_star * np.sqrt(depth)) / 0.10279, 2)
+
     notes = f"SDE={sde:.1f}, Sectors={sectors_str}" if sde else f"Sectors={sectors_str}"
     with open(MASTER_CSV_PATH, 'a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow([
             name, 
+            tic_id,
+            gaia_dr3_id,
             round(ra, 6) if ra else "", 
             round(dec, 6) if dec else "", 
-            tic_id, 
             round(period, 5) if period else "Single", 
             round(amplitude, 6) if amplitude else "", 
             round(depth, 5) if depth else "", 
             category, 
+            r_star,
+            r_comp if r_comp is not None else "",
             simbad_type, 
             "YES" if vsx_known else "NO", 
             confidence, 

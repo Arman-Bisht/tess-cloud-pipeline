@@ -91,8 +91,8 @@ def process_target(tic_id: str):
             purge_cache_for_target(tic_id)
             return
             
-        # 3. 15-Arcsecond Resilient Coordinate Cone Search (Spec 2.4)
-        catalog_info = check_catalog(ra, dec, category, best_res.get('period'))
+        # 3. High-precision coordinate and Gaia DR3 cross-match
+        catalog_info = check_catalog(ra, dec, category, best_res.get('period'), tic_id=tic_id, star_name=tic_id)
         final_status = get_final_status(category, catalog_info['is_known'], catalog_info['known_label'])
         
         # 4. Generate 5-Panel Diagnostic Plot (Spec 5.2)
@@ -102,8 +102,8 @@ def process_target(tic_id: str):
         update_status(tic_id, final_status)
         save_discovery(tic_id, tic_id, ra, dec, final_status, best_res, catalog_info, plot_path, sectors)
         
-        # 6. Dispatch Multi-Channel Alerts if Unrecorded Discovery or Known Binary (Spec 4.2 & 5.1)
-        if "UNRECORDED" in final_status or "KNOWN_BINARY" in final_status:
+        # 6. Dispatch Multi-Channel Alerts if Unlisted Discovery or Known Binary (Spec 4.2 & 5.1)
+        if "UNLISTED" in final_status or "KNOWN_BINARY" in final_status:
             dispatch_alert(tic_id, tic_id, final_status, best_res, catalog_info, plot_path, sectors)
             
         # 7. Guaranteed Immediate Cache Cleanup (Spec 3.2)
