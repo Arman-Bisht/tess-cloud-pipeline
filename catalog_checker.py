@@ -4,8 +4,9 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astroquery.simbad import Simbad
 from astroquery.vizier import Vizier
-from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
-from tenacity import retry, wait_exponential, stop_after_attempt
+from astroquery.mast import Catalogs
+import requests
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,10 +18,25 @@ try:
 except Exception:
     pass
 
+_NASA_TOI_MAP = None
+
+def get_nasa_toi_map():
+    global _NASA_TOI_MAP
+    if _NASA_TOI_MAP is not None:
+        return _NASA_TOI_MAP
+    _NASA_TOI_MAP = {}
+    try:
+        url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+toi,tid,tfopwg_disp+from+toi&format=json"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            for item in r.json():
+                if item.get('tid'):
+                    _NASA_TOI_MAP[int(item['tid'])] = str(item.get('toi'))
+    except Exception as e:
+        logger.warning(f"Failed to fetch live NASA TOI catalog: {e}")
+    return _NASA_TOI_MAP
+
 def format_sexagesimal(ra_deg: float, dec_deg: float) -> str:
-    """
-    Converts decimal RA/Dec to standard sexagesimal string (e.g. 01h 36m 46.66s, -52° 08' 12.13").
-    """
     try:
         coord = SkyCoord(ra=ra_deg, dec=dec_deg, unit=(u.deg, u.deg))
         ra_str = coord.ra.to_string(unit=u.hour, sep=('h ', 'm '), precision=2) + 's'
@@ -29,100 +45,139 @@ def format_sexagesimal(ra_deg: float, dec_deg: float) -> str:
     except Exception:
         return f"{ra_deg:.4f}d, {dec_deg:.4f}d"
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
-def check_catalog(ra: float, dec: float, category: str, period: Optional[float]) -> Dict[str, Any]:
+def fetch_gaia_metadata(star_name: str) -> Tuple[str, float]:
+    """Retrieves Gaia DR3 Source ID and TESS magnitude from TIC."""
+    gaia_id = "N/A"
+    tmag = 9.0
+    try:
+        tic_res = Catalogs.query_object(star_name, catalog="TIC", radius=0.005)
+        if len(tic_res) > 0:
+            row = tic_res[0]
+            if 'GAIA' in row.colnames and row['GAIA'] is not None:
+                gaia_id = str(row['GAIA'])
+            if 'Tmag' in row.colnames and row['Tmag'] is not None and not np.isnan(float(row['Tmag'])):
+                tmag = float(row['Tmag'])
+    except Exception as e:
+        logger.warning(f"Failed to fetch Gaia metadata for {star_name}: {e}")
+    return gaia_id, tmag
+
+def check_catalog(ra: float, dec: float, category: str, period: Optional[float], tic_id: Optional[str] = None, star_name: Optional[str] = None) -> Dict[str, Any]:
     """
-    Performs 15-arcsecond coordinate cone search against:
-    1. NASA Exoplanet Archive (pscomppars, toi)
-    2. SIMBAD
-    3. AAVSO VSX
+    Performs strict astronomical cross-matching:
+    1. Exact TIC ID matching against NASA Exoplanet Archive TOIs.
+    2. Exact star identifier query in SIMBAD (falling back to tight <=2.5" cone).
+    3. Tight <=3.0" cone query in AAVSO VSX to eliminate faint background neighbors.
     
-    Returns structured catalog matching info.
+    Returns structured catalog matching info including Gaia ID and match separation in arcsec.
     """
     coord = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg))
-    radius = 15 * u.arcsec
     
+    gaia_id = "N/A"
+    tmag = 9.0
+    if star_name:
+        gaia_id, tmag = fetch_gaia_metadata(star_name)
+
     info = {
         "is_known": False,
         "known_label": None,
+        "gaia_dr3_id": gaia_id,
+        "match_sep_arcsec": 0.0,
         "vsx_known": False,
+        "vsx_name": "None",
+        "vsx_type": "None",
         "vsx_text": "❌ Not found",
         "simbad_type": "None",
+        "simbad_main_id": star_name if star_name else "Unknown",
         "simbad_text": "❌ Not cataloged",
         "archive_known": False,
         "archive_text": "❌ Not found",
         "coords_str": format_sexagesimal(ra, dec)
     }
     
-    # 1. NASA Exoplanet Archive (pscomppars + toi)
-    if "EXOPLANET" in category or "SINGLE_TRANSIT" in category:
+    # 1. Exact NASA TOI Check by TIC ID
+    toi_map = get_nasa_toi_map()
+    clean_tid = None
+    if tic_id:
         try:
-            # Check confirmed planets (pscomppars)
-            table_conf = NasaExoplanetArchive.query_region(table="pscomppars", coordinates=coord, radius=radius)
-            if table_conf is not None and len(table_conf) > 0:
-                info["is_known"] = True
-                info["archive_known"] = True
-                info["known_label"] = "KNOWN_CONFIRMED_PLANET"
-                info["archive_text"] = "✅ Confirmed Planet"
-                return info
-                
-            # Check TOI (TESS Objects of Interest)
-            table_toi = NasaExoplanetArchive.query_region(table="toi", coordinates=coord, radius=radius)
-            if table_toi is not None and len(table_toi) > 0:
-                info["is_known"] = True
-                info["archive_known"] = True
-                info["known_label"] = "KNOWN_TOI_CANDIDATE"
-                info["archive_text"] = f"✅ TOI {table_toi['toi'][0]}"
-                return info
-        except Exception as e:
-            logger.warning(f"NASA Exoplanet Archive query failed: {e}")
+            clean_tid = int(str(tic_id).replace("TIC", "").strip())
+        except Exception:
+            pass
+            
+    if clean_tid and clean_tid in toi_map:
+        info["is_known"] = True
+        info["archive_known"] = True
+        info["known_label"] = "KNOWN_TOI_CANDIDATE"
+        info["archive_text"] = f"✅ TOI {toi_map[clean_tid]}"
+        return info
 
-    # 2. SIMBAD Cone Search
+    # 2. SIMBAD: Query by exact target identifier first
     try:
-        result_table = custom_simbad.query_region(coord, radius=radius)
-        if result_table is not None and len(result_table) > 0:
-            colnames = [c.upper() for c in result_table.colnames]
-            row = result_table[0]
+        simbad_match = None
+        if star_name:
+            simbad_match = custom_simbad.query_object(star_name)
+            
+        if simbad_match is None or len(simbad_match) == 0:
+            # Fall back to tight 2.5 arcsec cone to avoid background quasars or faint stars
+            simbad_match = custom_simbad.query_region(coord, radius=2.5 * u.arcsec)
+
+        if simbad_match is not None and len(simbad_match) > 0:
+            row = simbad_match[0]
+            col_map = {c.lower(): c for c in simbad_match.colnames}
+            
             otype = ""
             sptype = ""
-            for name in result_table.colnames:
-                if name.upper() == 'OTYPE':
-                    otype = str(row[name].decode('utf-8') if isinstance(row[name], bytes) else row[name]).strip()
-                elif name.upper() in ['SP_TYPE', 'SP']:
-                    sptype = str(row[name].decode('utf-8') if isinstance(row[name], bytes) else row[name]).strip()
+            main_id = ""
+            if 'main_id' in col_map:
+                val = row[col_map['main_id']]
+                main_id = str(val.decode('utf-8') if isinstance(val, bytes) else val).strip()
+            if 'otype' in col_map:
+                val = row[col_map['otype']]
+                otype = str(val.decode('utf-8') if isinstance(val, bytes) else val).strip()
+            if 'sp_type' in col_map:
+                val = row[col_map['sp_type']]
+                sptype = str(val.decode('utf-8') if isinstance(val, bytes) else val).strip()
+            elif 'sp' in col_map:
+                val = row[col_map['sp']]
+                sptype = str(val.decode('utf-8') if isinstance(val, bytes) else val).strip()
                     
             desc = f"{otype} {sptype}".strip()
-            if desc:
-                info["simbad_type"] = desc
-                info["simbad_text"] = f"✅ {desc}"
-            else:
-                info["simbad_text"] = "✅ Star listed"
-                
-            # Check if SIMBAD classifies it as a known binary or known variable/planet
-            clean_otype = otype.upper().replace(' ', '')
-            binary_flags = ['SB*', 'SB', '**', 'EB*', 'EL*', 'BY*', 'RS*', 'ROTV*', 'CANDIDATE_EB*', 'CANDIDATE_**', 'DOUBLE', 'SPECTROSCOPIC', 'ECLIPSING']
-            var_flags = ['V*', 'PULS', 'PLANET', 'ECL']
+            info["simbad_main_id"] = main_id
+            info["simbad_type"] = desc if desc else otype
+            info["simbad_text"] = f"✅ {desc}" if desc else "✅ Star listed"
             
-            if any(k in clean_otype for k in binary_flags):
+            clean_otype = otype.upper().replace(' ', '')
+            # Classify spectroscopic binaries distinctly from photometric detections
+            if 'SB' in clean_otype:
+                info["is_known"] = True
+                info["is_known_binary"] = True
+                info["known_label"] = "KNOWN_SIMBAD_SB_UNCHECKED_PHOTOMETRY"
+                info["simbad_text"] = f"✅ Spectroscopic Binary ({desc})"
+            elif any(k in clean_otype for k in ['EB*', 'EL*', 'BY*', 'RS*', 'ROTV*', 'DOUBLE', 'BINARY']):
                 info["is_known"] = True
                 info["is_known_binary"] = True
                 info["known_label"] = "KNOWN_BINARY_PHOTOMETRIC_VAR"
-                info["simbad_text"] = f"✅ Known Binary ({otype} {sptype})"
-            elif any(k in clean_otype for k in var_flags):
+                info["simbad_text"] = f"✅ Known Binary ({desc})"
+            elif any(k in clean_otype for k in ['V*', 'PULS', 'PLANET', 'ECL', 'ROT']):
                 info["is_known"] = True
                 info["known_label"] = f"KNOWN_SIMBAD_{otype.replace('*','').replace('?','')}"
     except Exception as e:
         logger.warning(f"SIMBAD query failed: {e}")
         
-    # 3. AAVSO VSX (Vizier B/vsx/vsx)
+    # 3. AAVSO VSX: Tight 3.0-arcsecond cone to prevent neighbor matching
     try:
-        vizier = Vizier(catalog="B/vsx/vsx", columns=["OID", "Name", "Type", "Period"])
-        result = vizier.query_region(coord, radius=radius)
+        vizier = Vizier(catalog="B/vsx/vsx", columns=["OID", "Name", "Type", "Period", "RAJ2000", "DEJ2000"])
+        result = vizier.query_region(coord, radius=3.0 * u.arcsec)
         if len(result) > 0 and len(result[0]) > 0:
             vsx_row = result[0][0]
             vsx_name = str(vsx_row['Name'])
             vsx_type = str(vsx_row['Type']) if 'Type' in vsx_row.colnames else "Var"
+            match_c = SkyCoord(ra=vsx_row['RAJ2000'], dec=vsx_row['DEJ2000'], unit=(u.deg, u.deg))
+            sep = float(coord.separation(match_c).arcsec)
+            
             info["vsx_known"] = True
+            info["vsx_name"] = vsx_name
+            info["vsx_type"] = vsx_type
+            info["match_sep_arcsec"] = sep
             info["vsx_text"] = f"✅ Known ({vsx_name} - {vsx_type})"
             info["is_known"] = True
             info["known_label"] = f"KNOWN_VSX_{vsx_type}"
@@ -135,4 +190,4 @@ def get_final_status(category: str, is_known: bool, known_label: Optional[str]) 
     if is_known:
         return known_label if known_label else f"KNOWN_{category}"
     else:
-        return f"DISCOVERY_UNRECORDED_{category}"
+        return f"UNLISTED_NEEDS_VETTING_{category}"

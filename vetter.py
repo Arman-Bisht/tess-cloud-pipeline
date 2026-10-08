@@ -117,7 +117,8 @@ def check_harmonics(period: float) -> bool:
 def check_tess_systematics(period: float) -> bool:
     if period is None:
         return False
-    if 13.0 < period < 15.0 or 26.5 < period < 28.5:
+    # Filter TESS orbital downlink gap (13.7d), sector length (27.4d), and sector 18/58/85 window alias (18.0-19.65d)
+    if (13.0 < period < 15.0) or (18.0 <= period <= 19.65) or (26.5 < period < 28.5):
         return True
     if check_harmonics(period):
         return True
@@ -156,11 +157,14 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         duration = bls_res['duration']
         sde = bls_res['sde']
         
+        # Immediate rejection of sector stitching edge divergence (> 50% depth)
+        if depth > 0.50:
+            return "FALSE_POSITIVE", {}
+            
         noise_level = np.nanstd(lc_flat.flux.value)
         snr = depth / noise_level if noise_level > 0 else 0
         
         if not check_tess_systematics(period) and snr > 3.0:
-            # Calculate number of observed cycles
             time_span = float(lc_flat.time.value[-1] - lc_flat.time.value[0])
             cycles = time_span / period if period > 0 else 1.0
             
@@ -178,8 +182,6 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 "sectors": sectors
             })
             
-            # Spec 1.3: Remove 3% depth ceiling entirely for EBs.
-            # Planets: depth <= DEPTH_MAX, odd/even in [0.7, 1.3], no secondary eclipse (>20%), clean centroid.
             if depth <= DEPTH_MAX and (0.7 <= odd_even_ratio <= 1.3) and sec_pass and centroid_pass:
                 bls_res['tier'] = assign_tier("EXOPLANET", sde, cycles, sec_pass, False)
                 return "CANDIDATE_EXOPLANET", bls_res
@@ -187,12 +189,17 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 bls_res['tier'] = assign_tier("ECLIPSING_BINARY", sde, cycles, sec_pass, False)
                 return "ECLIPSING_BINARY", bls_res
 
-    # Branch 2: Single-Transit Detection (Long-Period Planets)
+    # Branch 2: Single-Transit Detection (Long-Period Planets / Low-Mass Companions)
     if single_res and single_res.get('snr', 0) >= 6.0:
         epoch = single_res['epoch']
         duration = single_res['duration']
         depth = single_res['depth']
         sde = single_res['sde']
+        
+        # Immediate rejection of boundary divergence (> 50% depth)
+        if depth > 0.50:
+            return "FALSE_POSITIVE", {}
+            
         centroid_pass, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
         
         single_res.update({
@@ -205,7 +212,10 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             "sectors": sectors,
             "tier": "A" if sde >= 10.0 and centroid_pass else "B"
         })
-        return "SINGLE_TRANSIT_CANDIDATE", single_res
+        if depth > DEPTH_MAX:
+            return "ECLIPSING_BINARY", single_res
+        else:
+            return "SINGLE_TRANSIT_CANDIDATE", single_res
 
     # Branch 3: Gravitational Microlensing
     if micro_res and micro_res.get('sde', 0) >= 7.0:
@@ -224,6 +234,12 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
     # Branch 4: Stellar Pulsations / Variables (Lomb-Scargle)
     if ls_res and ls_res.get('fap', 1.0) < LS_FAP_SWEEP:
         period = ls_res['period']
+        amp = ls_res.get('amplitude', 0.0)
+        
+        # Enforce realistic amplitude floor: reject < 1000 ppm (0.1%) TESS noise floor
+        if amp < 0.001:
+            return "FALSE_POSITIVE", {}
+            
         sde = ls_res.get('sde', 7.0)
         time_span = float(lc_unflat.time.value[-1] - lc_unflat.time.value[0])
         cycles = time_span / period if period > 0 else 1.0
