@@ -117,8 +117,8 @@ def check_harmonics(period: float) -> bool:
 def check_tess_systematics(period: float) -> bool:
     if period is None:
         return False
-    # Filter TESS orbital downlink gap (13.7d), sector length (27.4d), and sector 18/58/85 window alias (18.0-19.65d)
-    if (13.0 < period < 15.0) or (18.0 <= period <= 19.65) or (26.5 < period < 28.5):
+    # Filter TESS orbital downlink gap (13.7d), sector length (27.4d), and sector stitching / BLS grid boundary alias (18.0-20.0d)
+    if (13.0 < period < 15.0) or (18.0 <= period <= 20.0) or (26.5 < period < 28.5):
         return True
     if check_harmonics(period):
         return True
@@ -165,6 +165,12 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         snr = depth / noise_level if noise_level > 0 else 0
         
         if not check_tess_systematics(period) and snr > 3.0:
+            # Enforce binned phase transit depth coherence (reject outlier spikes)
+            _, fl_binned = phase_fold_and_bin(lc_flat, period, epoch, bins=50)
+            binned_depth = np.nanmedian(fl_binned) - np.nanmin(fl_binned)
+            if binned_depth < 0.35 * depth:
+                return "FALSE_POSITIVE", {}
+                
             time_span = float(lc_flat.time.value[-1] - lc_flat.time.value[0])
             cycles = time_span / period if period > 0 else 1.0
             
@@ -244,6 +250,14 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         time_span = float(lc_unflat.time.value[-1] - lc_unflat.time.value[0])
         cycles = time_span / period if period > 0 else 1.0
         
+        # Enforce smooth, symmetric phase coverage (reject isolated sector edge spikes)
+        _, fl_binned = phase_fold_and_bin(lc_unflat, period, float(lc_unflat.time.value[0]), bins=40)
+        med_b = np.nanmedian(fl_binned)
+        above_med = np.sum(fl_binned > med_b + 0.3 * amp)
+        below_med = np.sum(fl_binned < med_b - 0.3 * amp)
+        if above_med < 4 or below_med < 4:
+            return "FALSE_POSITIVE", {}
+            
         if not check_tess_systematics(period):
             is_catalog_tier = ls_res['fap'] < LS_FAP_THRESHOLD
             tier = "A" if (is_catalog_tier and sde >= 10.0 and cycles >= 3.0) else "B"

@@ -72,8 +72,15 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         rolling_mean = uniform_filter1d(y, size=window_size, mode='reflect')
         dip_depths = med_flux - rolling_mean
         
-        # Exclude the first and last 0.4 days from edge effects
+        # Exclude the first and last 0.4 days from overall time series, as well as all inter-sector / downlink gaps (> 0.5 d)
         valid_time_mask = (t >= t[0] + 0.4) & (t <= t[-1] - 0.4)
+        dt_gaps = np.diff(t)
+        gap_indices = np.where(dt_gaps > 0.5)[0]
+        for g_idx in gap_indices:
+            gap_start = t[g_idx]
+            gap_end = t[g_idx + 1]
+            valid_time_mask &= ~((t >= gap_start - 0.4) & (t <= gap_end + 0.4))
+
         if not np.any(valid_time_mask):
             return None
             
@@ -92,7 +99,13 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         t_zoom = t[zoom_mask]
         y_zoom = y[zoom_mask]
         
+        # Require sufficient points and verified baseline both before and after candidate transit
         if len(t_zoom) < 30:
+            return None
+            
+        pre_pts = np.sum(t_zoom < candidate_t0 - 0.1)
+        post_pts = np.sum(t_zoom > candidate_t0 + 0.1)
+        if pre_pts < 10 or post_pts < 10:
             return None
             
         # Pass 2: Fit Transit Model (Mandel-Agol first, fallback to Trapezoid)
@@ -145,9 +158,26 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         null_chi2 = np.sum((y_zoom - fit_baseline)**2) / max(1, len(y_zoom) - 1)
         delta_chi2 = null_chi2 - chi2
         
-        # Transit SNR
+        # Transit SNR and in-transit fit fidelity check
         in_transit_mask = np.abs(t_zoom - fit_t0) <= (fit_duration / 2.0)
         n_in_transit = np.sum(in_transit_mask)
+        if n_in_transit < 4:
+            return None
+
+        # Check out-of-transit baseline isolation and stability
+        if np.any(~in_transit_mask):
+            rms_out = float(np.sqrt(np.mean(residuals[~in_transit_mask]**2)))
+            out_min = float(np.nanmin(y_zoom[~in_transit_mask]))
+            # If out-of-transit flux contains other dips > 50% of the candidate depth, it is not a solitary transit
+            if out_min < fit_baseline - 0.5 * fit_depth:
+                logger.debug(f"Rejected non-isolated single transit: out_min={out_min:.4f} < threshold={fit_baseline - 0.5 * fit_depth:.4f}")
+                return None
+            if rms_out > 0.03:
+                logger.debug(f"Rejected single transit due to unstable local baseline: rms_out={rms_out:.4f} > 0.03")
+                return None
+        else:
+            rms_out = std_flux
+
         snr = (fit_depth / std_flux) * np.sqrt(max(1, n_in_transit))
         
         b_param = float(np.sqrt(np.clip(1.0 - 2.0 * fit_ingress, 0.0, 0.95)))

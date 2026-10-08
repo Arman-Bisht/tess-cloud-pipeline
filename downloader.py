@@ -73,6 +73,17 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
         # Spec 1.2: Remove sigma_upper clipping entirely to preserve positive flux excursions
         stream2_lc = raw_lc.remove_nans().normalize()
         
+        # Ensure light curve is strictly sorted chronologically and free of duplicate timestamps
+        try:
+            t_vals = stream2_lc.time.value
+            if not np.all(np.diff(t_vals) > 0):
+                sort_idx = np.argsort(t_vals)
+                stream2_lc = stream2_lc[sort_idx]
+                _, u_idx = np.unique(stream2_lc.time.value, return_index=True)
+                stream2_lc = stream2_lc[np.sort(u_idx)]
+        except Exception:
+            pass
+        
         # Standardize 20-second fast-cadence sectors to standard TESS 2-minute cadence
         # Reduces noise and provides a 20x speedup across all detection engines
         if len(stream2_lc.time) > 40000:
