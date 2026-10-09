@@ -26,12 +26,34 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
         
         # Create duration grid (e.g. 0.02 to 0.25 days, which is ~30 mins to 6 hours)
         durations = np.linspace(0.02, 0.25, 20)
+        min_duration = 0.02
         
-        # Evaluate BLS using an oversampled frequency-uniform period grid
-        try:
-            periods = model.autoperiod(durations, minimum_period=BLS_MIN_PERIOD, maximum_period=min(BLS_MAX_PERIOD, 30.0), frequency_factor=4.0)
-        except Exception:
-            periods = np.linspace(BLS_MIN_PERIOD, min(BLS_MAX_PERIOD, 30.0), 10000)
+        # Determine effective contiguous baseline to prevent multi-year gap explosion
+        dt = np.diff(t)
+        gap_indices = np.where(dt > 5.0)[0]
+        if len(gap_indices) > 0:
+            chunk_starts = np.insert(gap_indices + 1, 0, 0)
+            chunk_ends = np.append(gap_indices, len(t) - 1)
+            chunk_baselines = [float(t[end] - t[start]) for start, end in zip(chunk_starts, chunk_ends)]
+            effective_baseline = max(max(chunk_baselines), 27.0)
+        else:
+            effective_baseline = float(t[-1] - t[0]) if (t[-1] - t[0]) > 0 else 27.0
+
+        # Frequency spacing scaled to effective contiguous baseline
+        min_p = max(BLS_MIN_PERIOD, 0.4)
+        max_p = min(BLS_MAX_PERIOD, 30.0)
+        df = min_duration / (effective_baseline ** 2)
+        min_freq = 1.0 / max_p
+        max_freq = 1.0 / min_p
+        nf = int(np.round((max_freq - min_freq) / df)) + 1
+        
+        # Cap initial coarse grid to at most 30,000 trial periods (uniform in frequency)
+        # to ensure fast sub-5s execution across any multi-sector/multi-year baseline
+        MAX_BLS_GRID = 30000
+        if nf > MAX_BLS_GRID:
+            nf = MAX_BLS_GRID
+        freqs = np.linspace(max_freq, min_freq, nf)
+        periods = 1.0 / freqs
             
         results = model.power(period=periods, duration=durations)
         
@@ -49,16 +71,34 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
         # Local fine-grid zoom (+/- 1.5 frequency bins around peak) to eliminate grid quantization
         df_local = 1.0 / (t[-1] - t[0]) if (t[-1] - t[0]) > 0 else 0.05
         f_coarse = 1.0 / coarse_period
-        fine_freqs = np.linspace(max(1.0 / BLS_MAX_PERIOD, f_coarse - 1.5 * df_local), f_coarse + 1.5 * df_local, 150)
-        fine_periods = 1.0 / fine_freqs
-        fine_results = model.power(period=fine_periods, duration=coarse_dur)
         
-        fine_max_idx = np.argmax(fine_results.power)
-        best_period = float(fine_results.period[fine_max_idx])
-        best_epoch = float(fine_results.transit_time[fine_max_idx])
-        best_depth = float(fine_results.depth[fine_max_idx])
-        best_duration = float(fine_results.duration[fine_max_idx])
-        fine_power = float(fine_results.power[fine_max_idx])
+        # Astropy BLS strictly requires all periods to be > duration
+        min_allowed_period = max(coarse_dur * 1.05, BLS_MIN_PERIOD)
+        max_fine_freq = min(1.0 / min_allowed_period, f_coarse + 1.5 * df_local)
+        min_fine_freq = max(1.0 / BLS_MAX_PERIOD, f_coarse - 1.5 * df_local)
+        if min_fine_freq >= max_fine_freq:
+            min_fine_freq = max(1.0 / BLS_MAX_PERIOD, 0.98 * f_coarse)
+            max_fine_freq = min(1.0 / min_allowed_period, 1.02 * f_coarse)
+            
+        fine_freqs = np.linspace(min_fine_freq, max_fine_freq, 150)
+        fine_periods = 1.0 / fine_freqs
+        fine_periods = np.sort(fine_periods)
+        
+        try:
+            fine_results = model.power(period=fine_periods, duration=coarse_dur)
+            fine_max_idx = np.argmax(fine_results.power)
+            best_period = float(fine_results.period[fine_max_idx])
+            best_epoch = float(fine_results.transit_time[fine_max_idx])
+            best_depth = float(fine_results.depth[fine_max_idx])
+            best_duration = float(fine_results.duration[fine_max_idx])
+            fine_power = float(fine_results.power[fine_max_idx])
+        except Exception:
+            best_period = coarse_period
+            best_epoch = float(results.transit_time[max_power_idx])
+            best_depth = float(results.depth[max_power_idx])
+            best_duration = coarse_dur
+            fine_power = float(power[max_power_idx])
+            fine_results = results
         
         # Estimate period uncertainty from FWHM of the fine period peak
         half_power = mean_power + 0.5 * (fine_power - mean_power)

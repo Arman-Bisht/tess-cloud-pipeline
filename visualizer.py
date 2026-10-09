@@ -181,7 +181,7 @@ def _render_diagnostic_plot(tic_id: str,
     else:
         # Single transit SNR summary
         ax4.axis('off')
-        ax4.text(0.5, 0.5, f"Single Transit Candidate\nSNR: {best_res.get('snr', 0):.1f}\nImpact b: {best_res.get('impact_parameter', 0):.2f}\nDuration: {best_res.get('duration_hours', 0):.1f} h", 
+        ax4.text(0.5, 0.5, f"Single Transit Candidate\nSNR: {best_res.get('snr', 0):.1f}\nDepth: {best_res.get('depth', 0)*100:.3f}%\nDuration: {best_res.get('duration', 0)*24:.1f} h", 
                  ha='center', va='center', fontsize=12,
                  bbox=dict(boxstyle='round,pad=0.5', facecolor='#f0f0f0'))
     add_corner_annotations(ax4)

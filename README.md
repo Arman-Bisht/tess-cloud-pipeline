@@ -8,19 +8,17 @@ Supports both **Local Continuous Scanning** on workstation hardware and **Server
 
 ### 📊 Vetted Candidate Catalog (732 Bright Stars Surveyed)
 
-Following multi-catalog cross-matching, Keplerian orbital separation checks ($a > R_*$), transit crossing velocity limits on giants ($T_{\text{dur}} \ge T_{\text{dur, min}}$), cycle-count completeness ($N_{\text{cycles}} \ge 3.0$), and grid alias pruning, the pipeline isolates **13 pristine unlisted astrophysical candidates** and **1 confirmed ground-truth benchmark recovery** logged with explicit audit flags in [`master_discoveries.csv`](master_discoveries.csv) (see full audit log in [`CORRECTIONS.md`](CORRECTIONS.md)):
+Following multi-catalog cross-matching, Keplerian orbital separation checks ($a > R_*$), transit crossing velocity limits on giants ($T_{\text{dur}} \ge T_{\text{dur, min}}$), cycle-count completeness ($N_{\text{cycles}} \ge 3.0$), tri-state centroid photocenter gating, and grid alias pruning, the pipeline logs **34 audited records** in [`master_discoveries.csv`](master_discoveries.csv) across three confidence tiers (see full audit log in [`CORRECTIONS.md`](CORRECTIONS.md)):
 
-| Vetted Category | Count | Description & Astrophysical Highlights |
+| Confidence Tier & Category | Count | Description & Astrophysical Highlights |
 | :--- | :---: | :--- |
-| **Unlisted High-Amplitude Variable Stars (Tier A)** | **5** | Genuine stellar pulsators/rotators with $N_{\text{cycles}} \ge 3.0$ and amplitudes far above noise floor (e.g. **HD 10528**, $103.5\,\text{min}$ $\delta$ Scuti pulsator; **HD 10635**, $P=0.41\,\text{d}$; **HD 10653**, $P=1.07\,\text{d}$; **HD 10661**, $P=4.10\,\text{d}$; **HD 10669**, $P=7.94\,\text{d}$) |
-| **Low-Mass Companion / Grazing EBs (Tier A)** | **7** | Solitary transits on main-sequence and subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$) with realistic crossing times and physically constrained companion radii $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$ (e.g. **HD 10628**, $R_{\text{comp}}=2.13\,R_{\text{Jup}}$; **HD 10668**, $R_{\text{comp}}=2.63\,R_{\text{Jup}}$; **HD 10564**, $R_{\text{comp}}=3.06\,R_{\text{Jup}}$) |
-| **Unlisted Eclipsing Binaries (Tier A)** | **1** | Deep binary eclipse with Keplerian orbital separation strictly verified outside host envelope ($a > R_*$) and $N_{\text{cycles}} \ge 3.0$: **HD 10549** |
-| **Confirmed Benchmark Control (Tier A)** | **1** | **HD 10720** (`CF Hyi`, Algol EB): Detected $P=3.7833\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.97\%}$ agreement, $0.03\%$ difference) |
-| *Unconstrained Parameters (Tier B)* | *4* | *Missing Gaia or TIC stellar radius: HD 10541, HD 10581, HD 10629, HD 10663* |
-| *Audit Flagged: Insufficient Baseline ($N_{\text{cycles}} < 3.0$, Tier C)* | *4* | *HD 10605 ($N=1.8$), HD 10526 ($N=2.4$), HD 10648 ($N=1.5$), HD 10585 ($N=1.3$; grid edge)* |
-| *Physical Rejections: Inside Host Envelope ($a \le R_*$, Tier C)* | *4* | *HD 10525 ($P=0.61\,\text{d}, a=4.4\,R_\odot \ll 28.2\,R_\odot$ giant envelope), HD 10614, HD 10689, HD 10696* |
-| *Physical Rejections: Giant Crossing Time ($T_{\text{dur}} \ll T_{\text{dur, min}}$, Tier C)* | *5* | *HD 10548 ($88\,R_\odot$), HD 10609 ($35\,R_\odot$), HD 10652 ($34\,R_\odot$), HD 10658 ($49\,R_\odot$), HD 10654 ($13\,R_\odot$); duration $3.6\,\text{h}$ requires unphysical $v > 1000\,\text{km/s}$ (blended background binaries)* |
-| *Systematic Rejections: Shared Discrete Grid Bins (Tier C)* | *3* | *HD 10555 & HD 10614 ($10.646\,\text{d}$ discrete bin); HD 10594 ($17.534\,\text{d}$ discrete bin)* |
+| **Confirmed Benchmark Control (Tier A)** | **1** | **HD 10720** (`CF Hyi`, Algol EB): Recovered $P=3.78442\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.998\%}$ match, $0.002\%$ difference) with measured clean centroid ($\text{SEM} = 0.0\,\sigma$). |
+| **Probable Unlisted Astrophysical Candidates (Tier B)** | **13** | Physically valid signals passing Keplerian ($a > R_*$), giant duration ($T_{\text{dur}} \ge T_{\min}$), depth, and cycle ($N \ge 3$) tests, held at Tier B pending Target Pixel File (TPF) pixel-level PRF follow-up because TESS QLP light curves lack pixel moment columns: <br>• **5 High-Amplitude Variables**: HD 10528 ($103.5\,\text{min}$ $\delta$ Scuti), HD 10635 ($P=0.41\,\text{d}$), HD 10653 ($P=1.07\,\text{d}$), HD 10661 ($P=4.10\,\text{d}$), HD 10669 ($P=7.94\,\text{d}$)<br>• **7 Low-Mass Companion / Grazing EBs**: Solitary transits on main-sequence / subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$, $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$): HD 10562, HD 10564, HD 10607, HD 10628, HD 10645, HD 10668, HD 10670<br>• **1 Unlisted Eclipsing Binary**: HD 10549 |
+| **Unconstrained Stellar Parameters (Tier B)** | **4** | Missing Gaia DR3 or TIC stellar radius ($R_* = \text{null}$), preventing physical separation calculation: HD 10541, HD 10581, HD 10629, HD 10663 |
+| *Audit Flagged: Insufficient Baseline ($N_{\text{cycles}} < 3.0$, Tier C)* | *4* | HD 10605 ($N=1.8$), HD 10526 ($N=2.4$), HD 10648 ($N=1.5$), HD 10585 ($N=1.4$; boundary pileup near $20.0\,\text{d}$) |
+| *Physical Rejections: Inside Host Envelope ($a \le R_*$, Tier C)* | *4* | HD 10525 ($P=0.61\,\text{d}, a=4.4\,R_\odot \ll 28.2\,R_\odot$ giant envelope), HD 10614, HD 10689, HD 10696 |
+| *Physical Rejections: Giant Crossing Time ($T_{\text{dur}} \ll T_{\text{dur, min}}$, Tier C)* | *5* | HD 10548 ($88\,R_\odot$), HD 10609 ($35\,R_\odot$), HD 10652 ($34\,R_\odot$), HD 10658 ($49\,R_\odot$), HD 10654 ($13\,R_\odot$); duration $3.6\,\text{h}$ requires unphysical $v > 1000\,\text{km/s}$ (blended background binaries) |
+| *Systematic Rejections: Shared Discrete Grid Bins (Tier C)* | *3* | HD 10555 & HD 10614 ($10.646\,\text{d}$ discrete bin); HD 10594 ($17.534\,\text{d}$ discrete bin) |
 
 ---
 
@@ -163,7 +161,7 @@ A catalog cross-match only counts as a genuine benchmark recovery if the detecte
 
 | Target | Detected $P$ | Catalog $P$ | Ratio | Catalog Type | Astrophysical Recovery Classification |
 | :--- | :---: | :---: | :---: | :--- | :--- |
-| **HD 10720** | **$3.7833\,\text{d}$** | **$3.7845\,\text{d}$** | **$0.9997$** | `EA` (CF Hyi) | **Confirmed Fundamental Recovery (0.03% difference)** |
+| **HD 10720** | **$3.78442\,\text{d}$** | **$3.7845\,\text{d}$** | **$0.99998$** | `EA` (CF Hyi) | **Confirmed Fundamental Recovery (0.002% difference)** |
 | **HD 10502** | **$0.0436\,\text{d}$** | **$0.0436\,\text{d}$** | **$1.0000$** | `DSCTC` (HU Psc) | **Confirmed Fundamental Recovery (62.8 min $\delta$ Scuti)** |
 | **HD 10081** | **$0.7861\,\text{d}$** | **$0.7852\,\text{d}$** | **$1.0011$** | `ACV` (CD-68 66) | **Confirmed Fundamental Recovery (0.11% difference)** |
 | **HD 10040** | **$0.6509\,\text{d}$** | **$0.3258\,\text{d}$** | **$1.9977$** | `ESD\|EC` | **Confirmed Harmonic Recovery (2.0× contact binary period)** |
@@ -197,18 +195,21 @@ The 9 mismatches illustrate the physical complexity of bright-star photometry an
 
 ---
 
-## 🤖 AI & Foundation Models Extension (`astro_ai_hub`)
+## 🤖 AI & Foundation Models Extension (Experimental / Roadmap Module)
 
-In addition to deterministic astrophysical signal processing (BLS, Lomb-Scargle, Keplerian vetting), the pipeline interfaces with modern **AI Foundation Models** via the modular `astro_ai_hub` suite with hardware GPU acceleration (NVIDIA RTX / CUDA):
+> **Scientific Scope & Integrity Notice:**
+> All primary astrophysical candidate discoveries, period determinations, and vetted catalogs reported in this repository are derived **strictly** from the deterministic signal processing engines (BLS, Lomb-Scargle, Keplerian orbit constraints, and centroid vetting). The `astro_ai_hub` module is an optional, experimental extension for zero-shot time-series forecasting and tabular ablations (`requirements-ai.txt`), isolated from core deterministic vetting.
 
-| Model | Architecture & Origin | Astronomical Domain in Pipeline |
+In addition to deterministic astrophysical signal processing, experimental interfaces with modern **AI Foundation Models** are being developed via the modular `astro_ai_hub` suite with hardware GPU acceleration (NVIDIA RTX / CUDA):
+
+| Model | Architecture & Origin | Experimental Domain in Pipeline |
 | :--- | :--- | :--- |
 | **Google TimesFM** | Decoder-Only Time-Series Transformer | Zero-shot baseline forecasting, non-stationary stellar variability detrending, and residual transit dip anomaly detection. |
 | **TabPFN** | Prior-Data Fitted Network (In-Context Tabular Transformer) | Zero-shot candidate vetting from tabular photometric features (`period`, `depth`, `duration`, `RUWE`, `odd_even_ratio`) to classify planets vs. grazing EBs vs. rotators. |
 | **MobileSAM (Segment Anything)** | Lightweight Vision Transformer | Target Pixel File (TPF) automated PRF aperture segmentation, halo contamination masking, and nearby blend isolation. |
 
-> **Note on Repository vs. Model Weights:**
-> The AI foundation packages and model checkpoints reside in the global Python environment (`astro_ai_hub`) rather than inside this Git repository. This ensures lightweight, fast Git operations without bloating the repository with multi-gigabyte neural network binaries.
+> **Note on Model Binaries:**
+> Neural network weights and checkpoints are excluded from this repository (`requirements-ai.txt` specifies environment installation). This maintains a lightweight Git footprint (<50 MB) without bloating the repository with multi-gigabyte binaries.
 
 ---
 
@@ -240,6 +241,7 @@ The repository includes production Terraform configuration for zero-cost deploym
 ├── db.py                      # SQLite state tracking and catalog persistence
 ├── master_discoveries.csv     # Master catalog of vetted candidates and benchmark controls with audit flags
 ├── test_downloader_sorting.py # Regression tests for multi-sector timestamp sorting and deduplication
+├── test_vetter_plumbing.py    # Regression tests for vetter plumbing, tri-state centroid, and BLS grid scalability
 ├── test_pipeline_upgrades.py  # End-to-end integration and vetting simulation tests
 ├── requirements.txt           # Core dependencies (astropy, lightkurve, scipy, etc.)
 └── terraform/                 # Infrastructure as Code for Google Cloud deployment

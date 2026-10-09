@@ -46,7 +46,11 @@ def sort_and_deduplicate_lightcurve(lc: lk.LightCurve) -> lk.LightCurve:
         logger.warning(f"Error sorting/deduplicating lightcurve: {e}")
     return lc
 
-@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=False)
+class DownloadNetworkError(Exception):
+    """Raised when light curve download fails after retry attempts due to network/archive error."""
+    pass
+
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=True)
 def _download_target_collection(target: str) -> Tuple[Optional[lk.LightCurveCollection], List[int]]:
     """
     Queries MAST and downloads LightCurveCollection with retry on network errors.
@@ -92,9 +96,14 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
       - lc_unflat: Unflattened normalized light curve WITHOUT upper outlier clipping (preserves microlensing/flares & variables).
       - lc_wide_flat: Wide-flattened light curve (window=2001) for single transit detection.
       - sectors: List of observed sector numbers.
+    Raises DownloadNetworkError on persistent network/MAST failures.
     """
     try:
-        lc_collection, sectors = _download_target_collection(target)
+        try:
+            lc_collection, sectors = _download_target_collection(target)
+        except Exception as net_err:
+            raise DownloadNetworkError(f"Network error querying MAST for {target}: {net_err}") from net_err
+
         if lc_collection is None or len(lc_collection) == 0:
             return None
             

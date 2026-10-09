@@ -69,7 +69,10 @@ def fetch_gaia_metadata(star_name: str) -> Tuple[str, float, Optional[float], Op
         logger.warning(f"Failed to fetch Gaia/TIC metadata for {star_name}: {e}")
     return gaia_id, tmag, r_star, m_star
 
-def check_catalog(ra: float, dec: float, category: str, period: Optional[float], tic_id: Optional[str] = None, star_name: Optional[str] = None) -> Dict[str, Any]:
+def check_catalog(ra: float, dec: float, category: str, period: Optional[float], 
+                  tic_id: Optional[str] = None, star_name: Optional[str] = None,
+                  r_star: Optional[float] = None, m_star: Optional[float] = None,
+                  gaia_id: Optional[str] = None, tmag: Optional[float] = None) -> Dict[str, Any]:
     """
     Performs strict astronomical cross-matching:
     1. Exact TIC ID matching against NASA Exoplanet Archive TOIs.
@@ -80,12 +83,21 @@ def check_catalog(ra: float, dec: float, category: str, period: Optional[float],
     """
     coord = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg))
     
-    gaia_id = "N/A"
-    tmag = 9.0
-    r_star = None
-    m_star = None
-    if star_name:
-        gaia_id, tmag, r_star, m_star = fetch_gaia_metadata(star_name)
+    if (gaia_id is None or r_star is None) and star_name:
+        g_id, t_mag, r_s, m_s = fetch_gaia_metadata(star_name)
+        if gaia_id is None:
+            gaia_id = g_id
+        if tmag is None:
+            tmag = t_mag
+        if r_star is None:
+            r_star = r_s
+        if m_star is None:
+            m_star = m_s
+            
+    if gaia_id is None:
+        gaia_id = "N/A"
+    if tmag is None:
+        tmag = 9.0
 
     info = {
         "is_known": False,
@@ -93,7 +105,9 @@ def check_catalog(ra: float, dec: float, category: str, period: Optional[float],
         "is_confirmed_recovery": False,
         "gaia_dr3_id": gaia_id,
         "r_star_rsun": r_star,
+        "r_star": r_star,
         "m_star_msun": m_star,
+        "m_star": m_star,
         "match_sep_arcsec": 0.0,
         "vsx_known": False,
         "vsx_name": "None",

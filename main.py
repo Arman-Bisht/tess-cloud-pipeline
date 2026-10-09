@@ -1,9 +1,19 @@
 import logging
 import concurrent.futures
-import functions_framework
 import os
 import gc
 from typing import Optional
+
+# Optional Google Cloud dependencies
+try:
+    import functions_framework
+except ImportError:
+    functions_framework = None
+
+try:
+    from google.cloud import storage
+except ImportError:
+    storage = None
 
 # Local Process Priority Optimization (Spec 4.3)
 try:
@@ -14,16 +24,14 @@ try:
 except Exception:
     pass
 
-from google.cloud import storage
-
 from db import upsert_target, get_target_status, save_discovery, update_status, get_max_hd_number, get_connection
-from downloader import get_lightcurves, purge_cache_for_target
+from downloader import get_lightcurves, purge_cache_for_target, DownloadNetworkError
 from bls_engine import run_bls
 from single_transit_engine import run_single_transit
 from microlensing_engine import run_microlensing
 from variable_engine import run_lomb_scargle
-from vetter import vet_signals
-from catalog_checker import check_catalog, get_final_status
+from vetter import vet_signals, assign_tier
+from catalog_checker import check_catalog, get_final_status, fetch_gaia_metadata
 from visualizer import save_diagnostic_plot
 from notifier import dispatch_alert
 
@@ -33,7 +41,7 @@ logger = logging.getLogger(__name__)
 GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME")
 
 def download_db():
-    if not GCS_BUCKET_NAME:
+    if not GCS_BUCKET_NAME or storage is None:
         return
     try:
         client = storage.Client()
@@ -46,7 +54,7 @@ def download_db():
         logger.error(f"Failed to download DB from GCS: {e}")
 
 def upload_db():
-    if not GCS_BUCKET_NAME:
+    if not GCS_BUCKET_NAME or storage is None:
         return
     try:
         client = storage.Client()
@@ -67,7 +75,14 @@ def process_target(tic_id: str):
     upsert_target(tic_id, tic_id, 0.0, 0.0, "PROCESSING")
     
     try:
-        lcs = get_lightcurves(tic_id)
+        try:
+            lcs = get_lightcurves(tic_id)
+        except DownloadNetworkError as net_err:
+            logger.warning(f"Transient MAST network error for {tic_id}: {net_err}")
+            update_status(tic_id, "DOWNLOAD_ERROR")
+            purge_cache_for_target(tic_id)
+            return
+
         if not lcs:
             update_status(tic_id, "NO_DATA")
             purge_cache_for_target(tic_id)
@@ -83,34 +98,57 @@ def process_target(tic_id: str):
         micro_res = run_microlensing(lc_unflat)
         ls_res = run_lomb_scargle(lc_unflat)
         
-        # 2. Query catalogs for stellar parameters (radius, Gaia DR3 ID, VSX)
-        candidate_period = (bls_res or {}).get('period') or (ls_res or {}).get('period')
-        catalog_info = check_catalog(ra, dec, "CANDIDATE", candidate_period, tic_id=tic_id, star_name=tic_id)
-        r_star = catalog_info.get('r_star')
-        is_known = catalog_info.get('is_known', False)
+        # 2. Fast TIC metadata query (R*, M*, Gaia ID) BEFORE vetting
+        gaia_id, tmag, r_star, m_star = fetch_gaia_metadata(tic_id)
         
-        # 3. Multi-Engine Vetting & Physical Gatekeepers (Spec 2.3 & 6.1)
-        category, best_res = vet_signals(bls_res, ls_res, single_res, micro_res, lc_flat, lc_unflat, sectors, r_star=r_star, is_known=is_known)
+        # 3. Multi-Engine Vetting & Physical Gatekeepers (Keplerian orbit & giant duration)
+        category, best_res = vet_signals(
+            bls_res, ls_res, single_res, micro_res, 
+            lc_flat, lc_unflat, sectors, 
+            r_star=r_star, m_star=m_star, is_known=False
+        )
         
         if category == "FALSE_POSITIVE":
             update_status(tic_id, "FALSE_POSITIVE")
             purge_cache_for_target(tic_id)
             return
             
+        # 4. Query full astronomical catalogs for surviving signals using actual WINNING period
+        winning_period = best_res.get('period')
+        catalog_info = check_catalog(
+            ra, dec, category, winning_period, 
+            tic_id=tic_id, star_name=tic_id,
+            r_star=r_star, m_star=m_star, gaia_id=gaia_id, tmag=tmag
+        )
+        
+        # If catalog indicates known variable/binary, re-vet tier with is_known=True
+        if catalog_info.get('is_known'):
+            best_res['tier'] = assign_tier(
+                category,
+                best_res.get('sde', 10.0),
+                best_res.get('n_cycles', 3.0),
+                best_res.get('sec_pass', True),
+                best_res.get('centroid_status', 'NOT_RUN'),
+                r_star=r_star,
+                orbit_pass=best_res.get('orbit_phys_pass', True),
+                dur_pass=best_res.get('dur_phys_pass', True),
+                is_known=True
+            )
+            
         final_status = get_final_status(category, catalog_info['is_known'], catalog_info['known_label'])
         
-        # 4. Generate 5-Panel Diagnostic Plot (Spec 5.2)
+        # 5. Generate 5-Panel Diagnostic Plot (Spec 5.2)
         plot_path = save_diagnostic_plot(tic_id, final_status, lc_flat, lc_unflat, best_res, sectors)
         
-        # 5. Persist to SQLite & Master CSV (Spec 3.3 & 3.4)
+        # 6. Persist to SQLite & Master CSV (Spec 3.3 & 3.4)
         update_status(tic_id, final_status)
         save_discovery(tic_id, tic_id, ra, dec, final_status, best_res, catalog_info, plot_path, sectors)
         
-        # 6. Dispatch Multi-Channel Alerts if Unlisted Discovery or Known Binary (Spec 4.2 & 5.1)
+        # 7. Dispatch Multi-Channel Alerts if Unlisted Discovery or Known Binary (Spec 4.2 & 5.1)
         if "UNLISTED" in final_status or "KNOWN_BINARY" in final_status:
             dispatch_alert(tic_id, tic_id, final_status, best_res, catalog_info, plot_path, sectors)
             
-        # 7. Guaranteed Immediate Cache Cleanup (Spec 3.2)
+        # 8. Guaranteed Immediate Cache Cleanup (Spec 3.2)
         purge_cache_for_target(tic_id)
         
     except Exception as e:
@@ -121,7 +159,6 @@ def process_target(tic_id: str):
         # Explicit garbage collection between stars (Spec 4.1)
         gc.collect()
 
-@functions_framework.http
 def serverless_entry(request):
     """HTTP Cloud Function entry point."""
     request_json = request.get_json(silent=True)
@@ -142,7 +179,7 @@ def serverless_entry(request):
     for i in range(start_hd, end_hd + 1):
         tic = f"HD {i}"
         status = get_target_status(tic)
-        if not status or status in ["PENDING", "PROCESSING"]:
+        if not status or status in ["PENDING", "PROCESSING", "DOWNLOAD_ERROR"]:
             targets_to_process.append(tic)
         if len(targets_to_process) >= batch_size:
             break
@@ -167,6 +204,9 @@ def serverless_entry(request):
     upload_db()
     
     return 'Batch processed successfully', 200
+
+if functions_framework is not None:
+    serverless_entry = functions_framework.http(serverless_entry)
     
 def run_local_scan(start_hd: Optional[int] = None, 
                    end_hd: Optional[int] = None, 
@@ -204,7 +244,7 @@ def run_local_scan(start_hd: Optional[int] = None,
         if tic not in seen:
             seen.add(tic)
             st = get_target_status(tic)
-            if not st or st in ["PENDING", "PROCESSING"]:
+            if not st or st in ["PENDING", "PROCESSING", "DOWNLOAD_ERROR"]:
                 unprocessed.append(tic)
             
     logger.info(f"Identified {len(unprocessed)} targets to search in this run.")

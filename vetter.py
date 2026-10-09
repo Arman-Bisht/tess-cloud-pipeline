@@ -61,11 +61,11 @@ def check_odd_even(lc: lk.LightCurve, period: float, epoch: float, duration: flo
         
     return float(odd_depth / even_depth)
 
-def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Optional[float], duration: Optional[float]) -> Tuple[bool, float, str]:
+def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Optional[float], duration: Optional[float]) -> Tuple[str, float, str]:
     """
     Checks if photocenter (centroid) shifts during transit, indicating a blended nearby star.
-    Uses two-sample Standard Error of the Mean (SEM): sigma_diff = sqrt(s1^2/N1 + s2^2/N2).
-    Returns (is_target, shift_sigma, status_description).
+    Uses two-sample Welch Standard Error of the Mean (SEM): sigma_diff = sqrt(s1^2/N1 + s2^2/N2).
+    Returns tri-state (status, shift_sigma, status_description) where status is 'PASS', 'FAIL', or 'NOT_RUN'.
     """
     try:
         col_c = None
@@ -80,17 +80,17 @@ def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Opt
                 break
                 
         if col_c is None or row_c is None:
-            return True, np.nan, "NOT_RUN (No centroid columns in QLP/FFI - Monitor with TPF)"
+            return "NOT_RUN", np.nan, "NOT_RUN (No centroid columns in QLP/FFI - Monitor with TPF)"
             
         if epoch is None or duration is None:
-            return True, np.nan, "NOT_RUN (Missing transit epoch/duration)"
+            return "NOT_RUN", np.nan, "NOT_RUN (Missing transit epoch/duration)"
             
         t = lc.time.value
         mask = np.isfinite(t) & np.isfinite(col_c) & np.isfinite(row_c)
         t, col_c, row_c = t[mask], col_c[mask], row_c[mask]
         
         if len(t) < 50:
-            return True, np.nan, "NOT_RUN (Centroid NaN-filled in QLP/FFI - Monitor with TPF)"
+            return "NOT_RUN", np.nan, "NOT_RUN (Centroid NaN-filled in QLP/FFI - Monitor with TPF)"
             
         if period is not None and period > 0:
             # Periodic transit phase
@@ -105,7 +105,7 @@ def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Opt
         n_in = int(np.sum(in_transit))
         n_out = int(np.sum(out_transit))
         if n_in < 4 or n_out < 15:
-            return True, np.nan, "NOT_RUN (Insufficient transit centroid cadences - Monitor with TPF)"
+            return "NOT_RUN", np.nan, "NOT_RUN (Insufficient transit centroid cadences - Monitor with TPF)"
             
         col_in, col_out = col_c[in_transit], col_c[out_transit]
         row_in, row_out = row_c[in_transit], row_c[out_transit]
@@ -121,10 +121,66 @@ def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Opt
         shift_sigma = float(max(sigma_col, sigma_row))
         
         if shift_sigma > 3.5:
-            return False, round(shift_sigma, 2), f"FAIL: Significant photocenter shift ({shift_sigma:.1f}σ SEM) - likely blend"
-        return True, round(shift_sigma, 2), f"PASS: Clean photocenter ({shift_sigma:.1f}σ SEM shift)"
+            return "FAIL", round(shift_sigma, 2), f"FAIL: Significant photocenter shift ({shift_sigma:.1f} sigma SEM) - likely blend"
+        return "PASS", round(shift_sigma, 2), f"PASS: Clean photocenter ({shift_sigma:.1f} sigma SEM shift)"
     except Exception as e:
-        return True, np.nan, f"NOT_RUN (Centroid check bypassed: {e})"
+        return "NOT_RUN", np.nan, f"NOT_RUN (Centroid check bypassed: {e})"
+
+def check_variable_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Optional[float] = None) -> Tuple[str, float, str]:
+    """
+    Checks if photocenter shifts between peak-flux phase and trough-flux phase for periodic variables.
+    Returns tri-state (status, shift_sigma, status_description) where status is 'PASS', 'FAIL', or 'NOT_RUN'.
+    """
+    try:
+        if period is None or period <= 0:
+            return "NOT_RUN", np.nan, "NOT_RUN (Non-periodic)"
+        col_c = None
+        row_c = None
+        for col_name in ['centroid_col', 'mom_centr1', 'pos_corr1']:
+            if hasattr(lc, col_name) and getattr(lc, col_name) is not None:
+                col_c = np.array(getattr(lc, col_name).value, dtype=float)
+                break
+        for row_name in ['centroid_row', 'mom_centr2', 'pos_corr2']:
+            if hasattr(lc, row_name) and getattr(lc, row_name) is not None:
+                row_c = np.array(getattr(lc, row_name).value, dtype=float)
+                break
+                
+        if col_c is None or row_c is None:
+            return "NOT_RUN", np.nan, "NOT_RUN (No centroid columns in QLP/FFI - Monitor with TPF)"
+            
+        t = lc.time.value
+        mask = np.isfinite(t) & np.isfinite(col_c) & np.isfinite(row_c)
+        t, col_c, row_c = t[mask], col_c[mask], row_c[mask]
+        
+        if len(t) < 50:
+            return "NOT_RUN", np.nan, "NOT_RUN (Centroid NaN-filled in QLP/FFI - Monitor with TPF)"
+            
+        t0 = epoch if epoch is not None else float(t[0])
+        phase = ((t - t0 + 0.5 * period) % period) / period - 0.5
+        
+        peak_mask = np.abs(phase) < 0.2
+        trough_mask = np.abs(np.abs(phase) - 0.5) < 0.2
+        
+        n_peak = int(np.sum(peak_mask))
+        n_trough = int(np.sum(trough_mask))
+        if n_peak < 10 or n_trough < 10:
+            return "NOT_RUN", np.nan, "NOT_RUN (Insufficient phase cadences for variable centroid)"
+            
+        col_p, col_tr = col_c[peak_mask], col_c[trough_mask]
+        row_p, row_tr = row_c[peak_mask], row_c[trough_mask]
+        
+        d_col = abs(float(np.median(col_p) - np.median(col_tr)))
+        d_row = abs(float(np.median(row_p) - np.median(row_tr)))
+        
+        sem_col = float(np.sqrt(np.var(col_p, ddof=1) / n_peak + np.var(col_tr, ddof=1) / n_trough))
+        sem_row = float(np.sqrt(np.var(row_p, ddof=1) / n_peak + np.var(row_tr, ddof=1) / n_trough))
+        
+        shift_sigma = float(max(d_col / max(1e-6, sem_col), d_row / max(1e-6, sem_row)))
+        if shift_sigma > 3.5:
+            return "FAIL", round(shift_sigma, 2), f"FAIL: Significant variable photocenter shift ({shift_sigma:.1f} sigma SEM) - likely blend"
+        return "PASS", round(shift_sigma, 2), f"PASS: Clean variable photocenter ({shift_sigma:.1f} sigma SEM shift)"
+    except Exception as e:
+        return "NOT_RUN", np.nan, f"NOT_RUN (Variable centroid error: {e})"
 
 def check_harmonics(period: float) -> bool:
     if period is None:
@@ -224,36 +280,43 @@ def assign_tier(category: str,
                 sde: float, 
                 cycles: float, 
                 sec_pass: bool, 
-                centroid_pass: bool,
+                centroid_status: str,
                 r_star: Optional[float] = None,
                 orbit_pass: bool = True,
                 dur_pass: bool = True,
                 is_known: bool = False) -> str:
     """
     Unified scientific tier assignment:
-    Tier A — Pristine Vetted:
+    Tier A — Pristine Vetted Clean:
+      - Requires MEASURED centroid pass (centroid_status == 'PASS')
       - SDE >= 10.0 (or SNR >= 10.0 for single dips)
       - cycles >= 3.0 (for periodic signals)
       - Passes secondary eclipse & odd/even tests
-      - Centroid does not fail photocenter shift
       - Physically possible orbit (a > R*) and duration (T_dur >= T_min)
       - Stellar radius R* known from Gaia / TIC
     Tier B — Probable / Unconstrained:
-      - Valid astrophysical signal passing physics, but R* unconstrained or SDE in [7.0, 10.0) or known benchmark.
-    Tier C — Audit Flagged / Dubious:
-      - Fails physical orbit (a <= R*), fails crossing duration, cycles < 3.0 for periodic, SDE < 7.0, or centroid blend.
+      - Valid astrophysical signal passing physics, but centroid NOT_RUN (needs TPF),
+        or R* unconstrained, or SDE in [8.0, 10.0), or known benchmark recovery.
+    Tier C — Audit Flagged / Dubious / Rejections:
+      - Fails physical orbit (a <= R*), fails crossing duration, cycles < 3.0 for periodic,
+        SDE < 8.0, or centroid FAIL (significant off-target photocenter shift).
     """
     if not orbit_pass or not dur_pass:
         return "C"
-    if not sec_pass or not centroid_pass:
+    if not sec_pass:
         return "C"
-    if sde < 7.0:
+    if centroid_status == "FAIL":
+        return "C"
+    if sde < 8.0:
         return "C"
     if cycles < 3.0 and "SINGLE" not in category.upper() and "MICROLENSING" not in category.upper():
         return "C"
     if is_known:
-        return "B"
+        return "A" if (is_known and sde >= 10.0 and centroid_status == "PASS") else "B"
     if r_star is None or np.isnan(r_star) or r_star <= 0:
+        return "B"
+    if centroid_status != "PASS":
+        # Unmeasured centroid cannot claim Tier A "Pristine Vetted Clean"
         return "B"
     if sde >= 10.0:
         return "A"
@@ -299,13 +362,14 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             
             sec_pass, sec_ratio = check_secondary_eclipse(lc_flat, period, epoch, depth, duration)
             odd_even_ratio = check_odd_even(lc_flat, period, epoch, duration)
-            centroid_pass, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
+            centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
+            centroid_pass = (centroid_status == "PASS")
             
             orbit_pass, a_rsun, orbit_desc = check_orbit_physical_separation(period, r_star, m_star)
             dur_pass, t_dur_min, dur_desc = check_transit_duration_physical(duration, r_star, m_star)
             
             tier = assign_tier("EXOPLANET" if depth <= DEPTH_MAX else "ECLIPSING_BINARY",
-                               sde, cycles, sec_pass, centroid_pass, r_star, orbit_pass, dur_pass, is_known)
+                               sde, cycles, sec_pass, centroid_status, r_star, orbit_pass, dur_pass, is_known)
                                
             bls_res.update({
                 "cycles": cycles,
@@ -313,6 +377,7 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 "sec_pass": sec_pass,
                 "sec_ratio": sec_ratio,
                 "odd_even_ratio": odd_even_ratio,
+                "centroid_status": centroid_status,
                 "centroid_pass": centroid_pass,
                 "centroid_shift_sigma": centroid_sigma,
                 "centroid_desc": centroid_desc,
@@ -326,7 +391,7 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             })
             
             if not orbit_pass or not dur_pass or cycles < 3.0:
-                return "ECLIPSING_BINARY", bls_res
+                return "UNCLASSIFIED_PERIODIC_DIP", bls_res
             
             if depth <= DEPTH_MAX and (0.7 <= odd_even_ratio <= 1.3) and sec_pass and centroid_pass:
                 return "CANDIDATE_EXOPLANET", bls_res
@@ -344,10 +409,11 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         if depth > 0.50:
             return "FALSE_POSITIVE", {}
             
-        centroid_pass, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
+        centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
+        centroid_pass = (centroid_status == "PASS")
         dur_pass, t_dur_min, dur_desc = check_transit_duration_physical(duration, r_star, m_star)
         
-        tier = assign_tier("SINGLE_TRANSIT", snr, 1.0, True, centroid_pass, r_star, True, dur_pass, is_known)
+        tier = assign_tier("SINGLE_TRANSIT", snr, 1.0, True, centroid_status, r_star, True, dur_pass, is_known)
         
         single_res.update({
             "cycles": 1.0,
@@ -355,6 +421,7 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             "sec_pass": True,
             "sec_ratio": 0.0,
             "odd_even_ratio": 1.0,
+            "centroid_status": centroid_status,
             "centroid_pass": centroid_pass,
             "centroid_shift_sigma": centroid_sigma,
             "centroid_desc": centroid_desc,
@@ -364,24 +431,25 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             "tier": tier
         })
         if not dur_pass:
-            return "ECLIPSING_BINARY", single_res
+            return "UNCLASSIFIED_TRANSIT_LIKE_DIP", single_res
         if depth > DEPTH_MAX:
             return "ECLIPSING_BINARY", single_res
         else:
             return "SINGLE_TRANSIT_CANDIDATE", single_res
 
     # Branch 3: Gravitational Microlensing
-    if micro_res and micro_res.get('sde', 0) >= 7.0:
-        tier = "A" if (micro_res['sde'] >= 10.0 and r_star is not None) else "B"
+    if micro_res and micro_res.get('sde', 0) >= 8.0:
+        tier = "B"
         micro_res.update({
             "cycles": 1.0,
             "n_cycles": 1.0,
             "sec_pass": True,
             "sec_ratio": 0.0,
             "odd_even_ratio": 1.0,
-            "centroid_pass": True,
-            "centroid_shift_sigma": 0.0,
-            "centroid_desc": "PASS: Symmetric magnification profile",
+            "centroid_status": "NOT_RUN",
+            "centroid_pass": False,
+            "centroid_shift_sigma": np.nan,
+            "centroid_desc": "NOT_RUN (Microlensing point-source profile - No centroid moments)",
             "sectors": sectors,
             "tier": tier
         })
@@ -415,12 +483,13 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             return "FALSE_POSITIVE", {}
             
         if not check_tess_systematics(period):
-            centroid_pass, centroid_sigma, centroid_desc = check_centroid_motion(lc_unflat, period, float(lc_unflat.time.value[0]), 0.1)
+            centroid_status, centroid_sigma, centroid_desc = check_variable_centroid_motion(lc_unflat, period, float(lc_unflat.time.value[0]))
+            centroid_pass = (centroid_status == "PASS")
             orbit_pass, a_rsun, orbit_desc = check_orbit_physical_separation(period, r_star, m_star)
             
             is_catalog_tier = ls_res['fap'] < LS_FAP_THRESHOLD
             effective_sde = sde if is_catalog_tier else 7.0
-            tier = assign_tier("VARIABLE_STAR", effective_sde, cycles, True, centroid_pass, r_star, orbit_pass, True, is_known)
+            tier = assign_tier("VARIABLE_STAR", effective_sde, cycles, True, centroid_status, r_star, orbit_pass, True, is_known)
             
             ls_res.update({
                 "cycles": cycles,
@@ -428,6 +497,7 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 "sec_pass": True,
                 "sec_ratio": 0.0,
                 "odd_even_ratio": 1.0,
+                "centroid_status": centroid_status,
                 "centroid_pass": centroid_pass,
                 "centroid_shift_sigma": centroid_sigma,
                 "centroid_desc": centroid_desc,
@@ -437,6 +507,8 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 "sectors": sectors,
                 "tier": tier
             })
+            if not orbit_pass:
+                return "UNCLASSIFIED_PERIODIC_DIP", ls_res
             return "VARIABLE_STAR", ls_res
 
     return "FALSE_POSITIVE", {}

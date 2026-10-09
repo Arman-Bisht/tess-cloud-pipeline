@@ -17,7 +17,7 @@ if "ASTROPY_CACHE_DIR" in os.environ:
 # BLS Config
 BLS_MIN_PERIOD = 0.4
 BLS_MAX_PERIOD = 20.0
-SDE_THRESHOLD = 7.0
+SDE_THRESHOLD = 8.0
 DEPTH_MAX = 0.03  # 3% threshold distinction between rocky/gas giants and stellar eclipses
 
 # Lomb-Scargle Config
