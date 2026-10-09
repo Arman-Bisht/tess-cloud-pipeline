@@ -68,7 +68,7 @@ def upload_db():
 def process_target(tic_id: str):
     logger.info(f"Processing target: {tic_id}")
     status = get_target_status(tic_id)
-    if status and status not in ["PENDING", "PROCESSING"]:
+    if status and status not in ["PENDING", "PROCESSING", "DOWNLOAD_ERROR"]:
         logger.info(f"Target {tic_id} already processed with status: {status}")
         return
         
@@ -105,7 +105,7 @@ def process_target(tic_id: str):
         category, best_res = vet_signals(
             bls_res, ls_res, single_res, micro_res, 
             lc_flat, lc_unflat, sectors, 
-            r_star=r_star, m_star=m_star, is_known=False
+            r_star=r_star, m_star=m_star, is_known=False, target_name=tic_id
         )
         
         if category == "FALSE_POSITIVE":

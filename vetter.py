@@ -182,6 +182,148 @@ def check_variable_centroid_motion(lc: lk.LightCurve, period: Optional[float], e
     except Exception as e:
         return "NOT_RUN", np.nan, f"NOT_RUN (Variable centroid error: {e})"
 
+def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, period: Optional[float] = None) -> Tuple[str, float, str]:
+    """
+    Downloads Target Pixel File (TPF) from MAST and calculates in-transit vs out-of-transit
+    photocenter centroid shift significance (sigma SEM).
+    Enables empirical Tier A verification for targets with unmeasured QLP lightcurve moments.
+    """
+    try:
+        if not target or str(target).strip() in ["", "None", "N/A", "--"]:
+            return "NOT_RUN", np.nan, "NOT_RUN (No target ID for TPF query)"
+        search = lk.search_targetpixelfile(target, author='SPOC')
+        if len(search) == 0:
+            search = lk.search_targetpixelfile(target, mission='TESS')
+        if len(search) == 0:
+            return "NOT_RUN", np.nan, "NOT_RUN (No TPF available in MAST archive)"
+            
+        if 'exptime' in search.table.colnames:
+            spoc_120 = search[search.table['exptime'] == 120]
+            if len(spoc_120) > 0:
+                search = spoc_120
+                
+        tpf = search[0].download()
+        if tpf is None:
+            return "NOT_RUN", np.nan, "NOT_RUN (TPF download returned None)"
+            
+        t = tpf.time.value
+        flux = tpf.flux.value
+        valid = np.isfinite(t) & np.all(np.isfinite(flux), axis=(1, 2))
+        t, flux = t[valid], flux[valid]
+        if len(t) < 50:
+            return "NOT_RUN", np.nan, "NOT_RUN (Insufficient valid cadences in TPF)"
+            
+        if period and period > 0:
+            phase = ((t - epoch + 0.5 * period) % period) / period - 0.5
+            in_tr = np.abs(phase) < (duration_days / (2.0 * period))
+            out_tr = (np.abs(phase) >= (duration_days / (2.0 * period))) & (np.abs(phase) < 3.0 * (duration_days / (2.0 * period)))
+        else:
+            in_tr = np.abs(t - epoch) < (0.5 * duration_days)
+            out_tr = (np.abs(t - epoch) >= (0.5 * duration_days)) & (np.abs(t - epoch) < 2.5 * duration_days)
+            
+        n_in = int(np.sum(in_tr))
+        n_out = int(np.sum(out_tr))
+        if n_in < 3 or n_out < 5:
+            return "NOT_RUN", np.nan, f"NOT_RUN (Insufficient in/out TPF cadences: {n_in}/{n_out})"
+            
+        n_time, n_rows, n_cols = flux.shape
+        y_grid, x_grid = np.mgrid[:n_rows, :n_cols]
+        
+        flux_sum = np.sum(flux, axis=(1, 2))
+        good_flux = flux_sum > 0
+        in_tr = in_tr & good_flux
+        out_tr = out_tr & good_flux
+        
+        x_c = np.sum(flux * x_grid, axis=(1, 2)) / flux_sum
+        y_c = np.sum(flux * y_grid, axis=(1, 2)) / flux_sum
+        
+        col_in, col_out = x_c[in_tr], x_c[out_tr]
+        row_in, row_out = y_c[in_tr], y_c[out_tr]
+        
+        d_col = abs(float(np.median(col_in) - np.median(col_out)))
+        d_row = abs(float(np.median(row_in) - np.median(row_out)))
+        
+        sem_col = float(np.sqrt(np.var(col_in, ddof=1) / n_in + np.var(col_out, ddof=1) / n_out))
+        sem_row = float(np.sqrt(np.var(row_in, ddof=1) / n_in + np.var(row_out, ddof=1) / n_out))
+        
+        sigma_col = d_col / max(1e-6, sem_col)
+        sigma_row = d_row / max(1e-6, sem_row)
+        shift_sigma = float(max(sigma_col, sigma_row))
+        
+        if shift_sigma > 3.5:
+            return "FAIL", round(shift_sigma, 2), f"FAIL: Significant TPF photocenter shift ({shift_sigma:.1f} sigma SEM) - likely blend"
+        return "PASS", round(shift_sigma, 2), f"PASS: Clean TPF photocenter ({shift_sigma:.1f} sigma SEM shift)"
+    except Exception as e:
+        return "NOT_RUN", np.nan, f"NOT_RUN (TPF error: {e})"
+
+def check_tpf_variable_centroid_motion(target: str, period: float, epoch: Optional[float] = None) -> Tuple[str, float, str]:
+    """
+    Downloads TPF from MAST and tests peak-phase vs trough-phase photocenter stability
+    for periodic variables without lightcurve centroid columns.
+    """
+    try:
+        if not target or str(target).strip() in ["", "None", "N/A", "--"]:
+            return "NOT_RUN", np.nan, "NOT_RUN (No target ID for TPF query)"
+        search = lk.search_targetpixelfile(target, author='SPOC')
+        if len(search) == 0:
+            search = lk.search_targetpixelfile(target, mission='TESS')
+        if len(search) == 0:
+            return "NOT_RUN", np.nan, "NOT_RUN (No TPF available in MAST archive)"
+            
+        if 'exptime' in search.table.colnames:
+            spoc_120 = search[search.table['exptime'] == 120]
+            if len(spoc_120) > 0:
+                search = spoc_120
+                
+        tpf = search[0].download()
+        if tpf is None:
+            return "NOT_RUN", np.nan, "NOT_RUN (TPF download returned None)"
+            
+        t = tpf.time.value
+        flux = tpf.flux.value
+        valid = np.isfinite(t) & np.all(np.isfinite(flux), axis=(1, 2))
+        t, flux = t[valid], flux[valid]
+        if len(t) < 50:
+            return "NOT_RUN", np.nan, "NOT_RUN (Insufficient valid cadences in TPF)"
+            
+        t0 = epoch if epoch is not None else float(t[0])
+        phase = ((t - t0 + 0.5 * period) % period) / period - 0.5
+        
+        peak_mask = np.abs(phase) < 0.2
+        trough_mask = np.abs(np.abs(phase) - 0.5) < 0.2
+        
+        n_peak = int(np.sum(peak_mask))
+        n_trough = int(np.sum(trough_mask))
+        if n_peak < 10 or n_trough < 10:
+            return "NOT_RUN", np.nan, "NOT_RUN (Insufficient phase cadences in TPF)"
+            
+        n_time, n_rows, n_cols = flux.shape
+        y_grid, x_grid = np.mgrid[:n_rows, :n_cols]
+        
+        flux_sum = np.sum(flux, axis=(1, 2))
+        good_flux = flux_sum > 0
+        peak_mask = peak_mask & good_flux
+        trough_mask = trough_mask & good_flux
+        
+        x_c = np.sum(flux * x_grid, axis=(1, 2)) / flux_sum
+        y_c = np.sum(flux * y_grid, axis=(1, 2)) / flux_sum
+        
+        col_p, col_tr = x_c[peak_mask], x_c[trough_mask]
+        row_p, row_tr = y_c[peak_mask], y_c[trough_mask]
+        
+        d_col = abs(float(np.median(col_p) - np.median(col_tr)))
+        d_row = abs(float(np.median(row_p) - np.median(row_tr)))
+        
+        sem_col = float(np.sqrt(np.var(col_p, ddof=1) / n_peak + np.var(col_tr, ddof=1) / n_trough))
+        sem_row = float(np.sqrt(np.var(row_p, ddof=1) / n_peak + np.var(row_tr, ddof=1) / n_trough))
+        
+        shift_sigma = float(max(d_col / max(1e-6, sem_col), d_row / max(1e-6, sem_row)))
+        if shift_sigma > 3.5:
+            return "FAIL", round(shift_sigma, 2), f"FAIL: Significant TPF variable photocenter shift ({shift_sigma:.1f} sigma SEM) - likely blend"
+        return "PASS", round(shift_sigma, 2), f"PASS: Clean TPF variable photocenter ({shift_sigma:.1f} sigma SEM shift)"
+    except Exception as e:
+        return "NOT_RUN", np.nan, f"NOT_RUN (TPF error: {e})"
+
 def check_harmonics(period: float) -> bool:
     if period is None:
         return False
@@ -331,72 +473,76 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 sectors: list,
                 r_star: Optional[float] = None,
                 m_star: Optional[float] = None,
-                is_known: bool = False) -> Tuple[str, Dict[str, Any]]:
+                is_known: bool = False,
+                target_name: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
     from config import SDE_THRESHOLD, LS_FAP_THRESHOLD, LS_FAP_SWEEP, DEPTH_MAX
     
+    # Check if Lomb-Scargle is significantly stronger (e.g. pulsating variable with SDE 30 vs BLS 8)
+    ls_sde = ls_res.get('sde', 0.0) if ls_res else 0.0
+    bls_sde = bls_res.get('sde', 0.0) if bls_res else 0.0
+    prefer_ls = (ls_sde > bls_sde and ls_sde >= 10.0 and ls_res.get('fap', 1.0) < LS_FAP_SWEEP)
+
     # Branch 1: Periodic Transits (BLS)
-    if bls_res and bls_res.get('sde', 0) >= SDE_THRESHOLD:
+    if not prefer_ls and bls_res and bls_sde >= SDE_THRESHOLD:
         period = bls_res['period']
         depth = bls_res['depth']
         epoch = bls_res['epoch']
         duration = bls_res['duration']
         sde = bls_res['sde']
         
-        # Immediate rejection of sector stitching edge divergence (> 50% depth)
-        if depth > 0.50:
-            return "FALSE_POSITIVE", {}
-            
         noise_level = np.nanstd(lc_flat.flux.value)
         snr = depth / noise_level if noise_level > 0 else 0
         
-        if not check_tess_systematics(period) and snr > 3.0:
+        if depth <= 0.50 and not check_tess_systematics(period) and snr > 3.0:
             # Enforce binned phase transit depth coherence (reject outlier spikes)
             _, fl_binned = phase_fold_and_bin(lc_flat, period, epoch, bins=50)
             binned_depth = np.nanmedian(fl_binned) - np.nanmin(fl_binned)
-            if binned_depth < 0.35 * depth:
-                return "FALSE_POSITIVE", {}
+            if binned_depth >= 0.35 * depth:
+                t_vals = lc_flat.time.value
+                observed_baseline = compute_observed_coverage_days(t_vals)
+                cycles = observed_baseline / period if period > 0 else 1.0
                 
-            t_vals = lc_flat.time.value
-            observed_baseline = compute_observed_coverage_days(t_vals)
-            cycles = observed_baseline / period if period > 0 else 1.0
-            
-            sec_pass, sec_ratio = check_secondary_eclipse(lc_flat, period, epoch, depth, duration)
-            odd_even_ratio = check_odd_even(lc_flat, period, epoch, duration)
-            centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
-            centroid_pass = (centroid_status == "PASS")
-            
-            orbit_pass, a_rsun, orbit_desc = check_orbit_physical_separation(period, r_star, m_star)
-            dur_pass, t_dur_min, dur_desc = check_transit_duration_physical(duration, r_star, m_star)
-            
-            tier = assign_tier("EXOPLANET" if depth <= DEPTH_MAX else "ECLIPSING_BINARY",
-                               sde, cycles, sec_pass, centroid_status, r_star, orbit_pass, dur_pass, is_known)
-                               
-            bls_res.update({
-                "cycles": cycles,
-                "n_cycles": round(cycles, 1),
-                "sec_pass": sec_pass,
-                "sec_ratio": sec_ratio,
-                "odd_even_ratio": odd_even_ratio,
-                "centroid_status": centroid_status,
-                "centroid_pass": centroid_pass,
-                "centroid_shift_sigma": centroid_sigma,
-                "centroid_desc": centroid_desc,
-                "orbit_phys_pass": orbit_pass,
-                "orbit_a_rsun": a_rsun,
-                "orbit_desc": orbit_desc,
-                "dur_phys_pass": dur_pass,
-                "dur_desc": dur_desc,
-                "sectors": sectors,
-                "tier": tier
-            })
-            
-            if not orbit_pass or not dur_pass or cycles < 3.0:
-                return "UNCLASSIFIED_PERIODIC_DIP", bls_res
-            
-            if depth <= DEPTH_MAX and (0.7 <= odd_even_ratio <= 1.3) and sec_pass and centroid_pass:
-                return "CANDIDATE_EXOPLANET", bls_res
-            else:
-                return "ECLIPSING_BINARY", bls_res
+                sec_pass, sec_ratio = check_secondary_eclipse(lc_flat, period, epoch, depth, duration)
+                odd_even_ratio = check_odd_even(lc_flat, period, epoch, duration)
+                centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
+                if centroid_status == "NOT_RUN" and target_name:
+                    tpf_st, tpf_sig, tpf_desc = check_tpf_centroid_motion(target_name, epoch, duration, period)
+                    if tpf_st != "NOT_RUN":
+                        centroid_status, centroid_sigma, centroid_desc = tpf_st, tpf_sig, tpf_desc
+                centroid_pass = (centroid_status == "PASS")
+                
+                orbit_pass, a_rsun, orbit_desc = check_orbit_physical_separation(period, r_star, m_star)
+                dur_pass, t_dur_min, dur_desc = check_transit_duration_physical(duration, r_star, m_star)
+                
+                tier = assign_tier("EXOPLANET" if depth <= DEPTH_MAX else "ECLIPSING_BINARY",
+                                   sde, cycles, sec_pass, centroid_status, r_star, orbit_pass, dur_pass, is_known)
+                                   
+                bls_res.update({
+                    "cycles": cycles,
+                    "n_cycles": round(cycles, 1),
+                    "sec_pass": sec_pass,
+                    "sec_ratio": sec_ratio,
+                    "odd_even_ratio": odd_even_ratio,
+                    "centroid_status": centroid_status,
+                    "centroid_pass": centroid_pass,
+                    "centroid_shift_sigma": centroid_sigma,
+                    "centroid_desc": centroid_desc,
+                    "orbit_phys_pass": orbit_pass,
+                    "orbit_a_rsun": a_rsun,
+                    "orbit_desc": orbit_desc,
+                    "dur_phys_pass": dur_pass,
+                    "dur_desc": dur_desc,
+                    "sectors": sectors,
+                    "tier": tier
+                })
+                
+                if not orbit_pass or not dur_pass or cycles < 3.0:
+                    return "UNCLASSIFIED_PERIODIC_DIP", bls_res
+                
+                if depth <= DEPTH_MAX and (0.7 <= odd_even_ratio <= 1.3) and sec_pass and centroid_status != "FAIL":
+                    return "CANDIDATE_EXOPLANET", bls_res
+                else:
+                    return "ECLIPSING_BINARY", bls_res
 
     # Branch 2: Single-Transit Detection (Long-Period Planets / Low-Mass Companions)
     if single_res and single_res.get('snr', 0) >= 6.0:
@@ -410,6 +556,10 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             return "FALSE_POSITIVE", {}
             
         centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
+        if centroid_status == "NOT_RUN" and target_name:
+            tpf_st, tpf_sig, tpf_desc = check_tpf_centroid_motion(target_name, epoch, duration, None)
+            if tpf_st != "NOT_RUN":
+                centroid_status, centroid_sigma, centroid_desc = tpf_st, tpf_sig, tpf_desc
         centroid_pass = (centroid_status == "PASS")
         dur_pass, t_dur_min, dur_desc = check_transit_duration_physical(duration, r_star, m_star)
         
@@ -430,7 +580,7 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             "sectors": sectors,
             "tier": tier
         })
-        if not dur_pass:
+        if not dur_pass or centroid_status == "FAIL":
             return "UNCLASSIFIED_TRANSIT_LIKE_DIP", single_res
         if depth > DEPTH_MAX:
             return "ECLIPSING_BINARY", single_res
@@ -484,6 +634,10 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             
         if not check_tess_systematics(period):
             centroid_status, centroid_sigma, centroid_desc = check_variable_centroid_motion(lc_unflat, period, float(lc_unflat.time.value[0]))
+            if centroid_status == "NOT_RUN" and target_name:
+                tpf_st, tpf_sig, tpf_desc = check_tpf_variable_centroid_motion(target_name, period, float(lc_unflat.time.value[0]))
+                if tpf_st != "NOT_RUN":
+                    centroid_status, centroid_sigma, centroid_desc = tpf_st, tpf_sig, tpf_desc
             centroid_pass = (centroid_status == "PASS")
             orbit_pass, a_rsun, orbit_desc = check_orbit_physical_separation(period, r_star, m_star)
             

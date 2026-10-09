@@ -12,11 +12,16 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
     try:
         t = lc.time.value
         y = lc.flux.value
-        # Use uncertainties if available, else ones
-        dy = lc.flux_err.value if lc.flux_err is not None else np.ones_like(y)
+        # Use uncertainties if available and finite, else estimate from scatter
+        if hasattr(lc, 'flux_err') and lc.flux_err is not None:
+            dy = np.array(lc.flux_err.value, dtype=float)
+            if not np.all(np.isfinite(dy)) or np.all(dy <= 0):
+                dy = np.full_like(y, np.nanstd(y) if np.nanstd(y) > 0 else 0.001)
+        else:
+            dy = np.full_like(y, np.nanstd(y) if np.nanstd(y) > 0 else 0.001)
         
         # Remove NaNs again just in case
-        mask = np.isfinite(y) & np.isfinite(t)
+        mask = np.isfinite(y) & np.isfinite(t) & np.isfinite(dy)
         t, y, dy = t[mask], y[mask], dy[mask]
         
         if len(t) < 100:
@@ -40,7 +45,7 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
             effective_baseline = float(t[-1] - t[0]) if (t[-1] - t[0]) > 0 else 27.0
 
         # Frequency spacing scaled to effective contiguous baseline
-        min_p = max(BLS_MIN_PERIOD, 0.4)
+        min_p = max(BLS_MIN_PERIOD, 0.5)
         max_p = min(BLS_MAX_PERIOD, 30.0)
         df = min_duration / (effective_baseline ** 2)
         min_freq = 1.0 / max_p
@@ -58,11 +63,16 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
         results = model.power(period=periods, duration=durations)
         
         power = results.power
-        max_power_idx = np.argmax(power)
+        valid_mask = np.isfinite(power)
+        if not np.any(valid_mask):
+            return None
+        valid_indices = np.where(valid_mask)[0]
+        best_valid_idx = np.argmax(power[valid_mask])
+        max_power_idx = valid_indices[best_valid_idx]
         
-        # Compute SDE
-        mean_power = float(np.mean(power))
-        std_power = float(np.std(power))
+        # Compute SDE strictly over finite power values
+        mean_power = float(np.mean(power[valid_mask]))
+        std_power = float(np.std(power[valid_mask]))
         sde = (float(power[max_power_idx]) - mean_power) / std_power if std_power > 0 else 0.0
         
         coarse_period = float(results.period[max_power_idx])
@@ -86,12 +96,18 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
         
         try:
             fine_results = model.power(period=fine_periods, duration=coarse_dur)
-            fine_max_idx = np.argmax(fine_results.power)
-            best_period = float(fine_results.period[fine_max_idx])
-            best_epoch = float(fine_results.transit_time[fine_max_idx])
-            best_depth = float(fine_results.depth[fine_max_idx])
-            best_duration = float(fine_results.duration[fine_max_idx])
-            fine_power = float(fine_results.power[fine_max_idx])
+            fine_power_arr = fine_results.power
+            fine_mask = np.isfinite(fine_power_arr)
+            if np.any(fine_mask):
+                fine_valid_idx = np.where(fine_mask)[0]
+                fine_best_idx = fine_valid_idx[np.argmax(fine_power_arr[fine_mask])]
+                best_period = float(fine_results.period[fine_best_idx])
+                best_epoch = float(fine_results.transit_time[fine_best_idx])
+                best_depth = float(fine_results.depth[fine_best_idx])
+                best_duration = float(fine_results.duration[fine_best_idx])
+                fine_power = float(fine_results.power[fine_best_idx])
+            else:
+                raise ValueError("No finite fine power")
         except Exception:
             best_period = coarse_period
             best_epoch = float(results.transit_time[max_power_idx])
@@ -101,12 +117,13 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
             fine_results = results
         
         # Estimate period uncertainty from FWHM of the fine period peak
+        used_periods = fine_periods if fine_results is not results else periods
         half_power = mean_power + 0.5 * (fine_power - mean_power)
-        peak_indices = np.where(fine_results.power >= half_power)[0]
+        peak_indices = np.where(np.isfinite(fine_results.power) & (fine_results.power >= half_power))[0]
         if len(peak_indices) > 1:
-            period_err = float(abs(fine_periods[peak_indices[-1]] - fine_periods[peak_indices[0]]) / 2.355)
+            period_err = float(abs(used_periods[peak_indices[-1]] - used_periods[peak_indices[0]]) / 2.355)
         else:
-            period_err = float(abs(fine_periods[1] - fine_periods[0]))
+            period_err = float(abs(used_periods[1] - used_periods[0])) if len(used_periods) > 1 else 0.001
         
         return {
             "period": best_period,

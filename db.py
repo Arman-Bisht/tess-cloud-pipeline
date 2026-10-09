@@ -67,9 +67,12 @@ def init_db():
         ("vsx_known", "BOOLEAN"),
         ("vsx_period", "REAL"),
         ("period_ratio", "REAL"),
+        ("period_err", "REAL"),
         ("n_cycles", "REAL"),
+        ("centroid_status", "TEXT"),
         ("centroid_shift_sigma", "REAL"),
         ("centroid_desc", "TEXT"),
+        ("pipeline_version", "TEXT"),
         ("sectors", "TEXT"),
         ("plot_path", "TEXT"),
         ("detection_timestamp", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
@@ -90,10 +93,10 @@ def init_db():
         with open(MASTER_CSV_PATH, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow([
-                "name", "tic_id", "gaia_dr3_id", "ra", "dec", "period", "vsx_period", "period_ratio", 
-                "n_cycles", "centroid_sigma", "amplitude", "depth", "category", "r_star_rsun", 
+                "name", "tic_id", "gaia_dr3_id", "ra", "dec", "period", "period_err", "vsx_period", "period_ratio", 
+                "n_cycles", "centroid_status", "centroid_sigma", "amplitude", "depth", "category", "r_star_rsun", 
                 "r_comp_rjup", "simbad_type", "vsx_known", "gaia_ok", "radius_ok", "orbit_phys_ok", 
-                "duration_phys_ok", "confidence", "notes"
+                "duration_phys_ok", "confidence", "pipeline_version", "notes"
             ])
 
 def upsert_target(tic_id: str, name: str, ra: float, dec: float, status: str = "PENDING"):
@@ -173,22 +176,25 @@ def save_discovery(tic_id: str,
     
     vsx_period = catalog_info.get('vsx_period')
     period_ratio = catalog_info.get('period_ratio')
+    period_err = metrics.get('period_err')
     n_cycles = metrics.get('n_cycles', round(metrics.get('cycles', 1.0), 1))
+    centroid_status = metrics.get('centroid_status', 'NOT_RUN')
     centroid_sigma = metrics.get('centroid_shift_sigma', 0.0)
     centroid_desc = metrics.get('centroid_desc', 'Passed')
+    pipeline_version = "v2.2.0"
     
     cursor.execute('''
     INSERT INTO signals (
-        tic_id, name, ra, dec, category, type, period, vsx_period, period_ratio,
-        n_cycles, centroid_shift_sigma, centroid_desc, epoch, depth, 
-        amplitude, duration, sde, fap, tier, confidence, simbad_type, 
+        tic_id, name, ra, dec, category, type, period, period_err, vsx_period, period_ratio,
+        n_cycles, centroid_status, centroid_shift_sigma, centroid_desc, pipeline_version,
+        epoch, depth, amplitude, duration, sde, fap, tier, confidence, simbad_type, 
         vsx_known, sectors, plot_path
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        tic_id, name, ra, dec, category, category, period, vsx_period, period_ratio,
-        n_cycles, centroid_sigma, centroid_desc, epoch, depth,
-        amplitude, duration, sde, fap, tier, confidence, simbad_type,
+        tic_id, name, ra, dec, category, category, period, period_err, vsx_period, period_ratio,
+        n_cycles, centroid_status, centroid_sigma, centroid_desc, pipeline_version,
+        epoch, depth, amplitude, duration, sde, fap, tier, confidence, simbad_type,
         vsx_known, sectors_str, plot_path
     ))
     conn.commit()
@@ -255,9 +261,11 @@ def save_discovery(tic_id: str,
             round(ra, 6) if ra else "", 
             round(dec, 6) if dec else "", 
             round(period, 5) if period else "Single", 
+            round(period_err, 6) if (period_err is not None and not np.isnan(period_err)) else "",
             round(vsx_period, 5) if vsx_period else "",
             round(period_ratio, 4) if period_ratio else "",
             round(n_cycles, 1) if n_cycles else "1.0",
+            centroid_status,
             round(centroid_sigma, 2) if (centroid_sigma is not None and not np.isnan(centroid_sigma)) else "NaN",
             round(amplitude, 6) if amplitude else "", 
             round(depth, 5) if depth else "", 
@@ -271,6 +279,7 @@ def save_discovery(tic_id: str,
             orbit_phys_ok,
             duration_phys_ok,
             clean_tier, 
+            pipeline_version,
             notes
         ])
 
