@@ -196,6 +196,21 @@ The 9 mismatches illustrate the physical complexity of bright-star photometry an
 
 ---
 
+## 🤖 AI & Foundation Models Extension (`astro_ai_hub`)
+
+In addition to deterministic astrophysical signal processing (BLS, Lomb-Scargle, Keplerian vetting), the pipeline interfaces with modern **AI Foundation Models** via the modular `astro_ai_hub` suite with hardware GPU acceleration (NVIDIA RTX / CUDA):
+
+| Model | Architecture & Origin | Astronomical Domain in Pipeline |
+| :--- | :--- | :--- |
+| **Google TimesFM** | Decoder-Only Time-Series Transformer | Zero-shot baseline forecasting, non-stationary stellar variability detrending, and residual transit dip anomaly detection. |
+| **TabPFN** | Prior-Data Fitted Network (In-Context Tabular Transformer) | Zero-shot candidate vetting from tabular photometric features (`period`, `depth`, `duration`, `RUWE`, `odd_even_ratio`) to classify planets vs. grazing EBs vs. rotators. |
+| **MobileSAM (Segment Anything)** | Lightweight Vision Transformer | Target Pixel File (TPF) automated PRF aperture segmentation, halo contamination masking, and nearby blend isolation. |
+
+> **Note on Repository vs. Model Weights:**
+> The AI foundation packages and model checkpoints reside in the global Python environment (`astro_ai_hub`) rather than inside this Git repository. This ensures lightweight, fast Git operations without bloating the repository with multi-gigabyte neural network binaries.
+
+---
+
 ## ☁️ Serverless Cloud Architecture (Optional GCP Deployment)
 
 The repository includes production Terraform configuration for zero-cost deployment on the **GCP Always Free Tier**:
