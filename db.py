@@ -234,11 +234,14 @@ def save_discovery(tic_id: str,
         if duration < 0.20 * t_dur_min:
             duration_phys_ok = "NO (Too Fast for Giant)"
 
-    # Derive tier confidence from audit flags
-    if gaia_ok == "YES" and radius_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES":
+    # Derive tier confidence respecting vetter metrics and audit flags
+    tier = metrics.get('tier', 'B')
+    if tier == "A" and gaia_ok == "YES" and radius_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES":
         clean_tier = "Tier A (Vetted Clean)"
-    elif gaia_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES":
-        clean_tier = "Tier B (Radius Unconstrained)"
+    elif tier in ["A", "B"] and (radius_ok == "NO" or gaia_ok == "NO"):
+        clean_tier = "Tier B (Unconstrained Parameters)"
+    elif tier == "B":
+        clean_tier = "Tier B (Probable)"
     else:
         clean_tier = "Tier C (Audit Flagged)"
 
@@ -255,7 +258,7 @@ def save_discovery(tic_id: str,
             round(vsx_period, 5) if vsx_period else "",
             round(period_ratio, 4) if period_ratio else "",
             round(n_cycles, 1) if n_cycles else "1.0",
-            round(centroid_sigma, 2) if centroid_sigma is not None else "0.0",
+            round(centroid_sigma, 2) if (centroid_sigma is not None and not np.isnan(centroid_sigma)) else "NaN",
             round(amplitude, 6) if amplitude else "", 
             round(depth, 5) if depth else "", 
             category, 

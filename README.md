@@ -6,20 +6,21 @@ Supports both **Local Continuous Scanning** on workstation hardware and **Server
 
 ---
 
-## 📊 Vetted Candidate Catalog (686 Bright Stars Surveyed)
+### 📊 Vetted Candidate Catalog (732 Bright Stars Surveyed)
 
-Following multi-catalog cross-matching, Keplerian orbital separation checks ($a > R_*$), transit crossing velocity limits on giants ($T_{\text{dur}} \ge T_{\text{dur, min}}$), and grid alias pruning, the pipeline isolates **15 pristine unlisted astrophysical candidates** and **1 confirmed ground-truth benchmark recovery** logged with explicit audit flags in [`master_discoveries.csv`](file:///d:/exo_planet/astrohunter_pro/master_discoveries.csv):
+Following multi-catalog cross-matching, Keplerian orbital separation checks ($a > R_*$), transit crossing velocity limits on giants ($T_{\text{dur}} \ge T_{\text{dur, min}}$), cycle-count completeness ($N_{\text{cycles}} \ge 3.0$), and grid alias pruning, the pipeline isolates **13 pristine unlisted astrophysical candidates** and **1 confirmed ground-truth benchmark recovery** logged with explicit audit flags in [`master_discoveries.csv`](master_discoveries.csv) (see full audit log in [`CORRECTIONS.md`](CORRECTIONS.md)):
 
 | Vetted Category | Count | Description & Astrophysical Highlights |
 | :--- | :---: | :--- |
-| **Unlisted High-Amplitude Variable Stars** | **6** | Genuine stellar pulsators/rotators with amplitudes far above noise floor (e.g. **HD 10528**, $103.5\,\text{min}$ $\delta$ Scuti pulsator; **HD 10526**, $P=11.37\,\text{d}$; **HD 10635**, $P=0.41\,\text{d}$; **HD 10653**, $P=1.07\,\text{d}$; **HD 10661**, $P=4.10\,\text{d}$; **HD 10669**, $P=7.94\,\text{d}$) |
-| **Low-Mass Companion / Grazing EBs** | **7** | Solitary transits on main-sequence and subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$) with realistic crossing times and physically constrained companion radii $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$ (e.g. **HD 10628**, $R_{\text{comp}}=2.13\,R_{\text{Jup}}$; **HD 10668**, $R_{\text{comp}}=2.63\,R_{\text{Jup}}$; **HD 10564**, $R_{\text{comp}}=3.06\,R_{\text{Jup}}$) |
-| **Unlisted Eclipsing Binaries (EB)** | **2** | Deep binary eclipses with Keplerian orbital separation strictly verified outside the host envelope ($a > R_*$): **HD 10549** and **HD 10605** ($P=15.17\,\text{d}, a \approx 34.9\,R_\odot > 10.3\,R_\odot$) |
-| **Confirmed Benchmark Control** | **1** | **HD 10720** (`CF Hyi`, Algol EB): Detected $P=3.7833\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.97\%}$ agreement, $0.03\%$ difference) |
-| *Physical Rejections: Inside Host Star ($a \le R_*$)* | *4* | *HD 10525 ($P=0.61\,\text{d}, a=4.4\,R_\odot \ll 28.2\,R_\odot$ giant envelope; reclassified), HD 10614, HD 10689, HD 10696* |
-| *Physical Rejections: Giant Crossing Time ($T_{\text{dur}} \ll T_{\text{dur, min}}$)* | *5* | *HD 10548 ($88\,R_\odot$), HD 10609 ($35\,R_\odot$), HD 10652 ($34\,R_\odot$), HD 10658 ($49\,R_\odot$), HD 10654 ($13\,R_\odot$); duration $3.6\,\text{h}$ requires unphysical $v > 1000\,\text{km/s}$ (blended background binaries)* |
-| *Systematic Rejections: Shared Grid Bins & Boundary Pileups* | *4* | *HD 10555 & HD 10614 ($10.646\,\text{d}$ discrete bin); HD 10594 & HD 10648 ($17.534\,\text{d}$ discrete bin); HD 10585 ($19.88\,\text{d}$, $N_{\text{cycles}} < 3.0$)* |
-| *Unconstrained Parameters (Missing Gaia / TIC Radius)* | *5* | *HD 10541, HD 10581, HD 10629, HD 10648, HD 10663 (placeholder radii eliminated)* |
+| **Unlisted High-Amplitude Variable Stars (Tier A)** | **5** | Genuine stellar pulsators/rotators with $N_{\text{cycles}} \ge 3.0$ and amplitudes far above noise floor (e.g. **HD 10528**, $103.5\,\text{min}$ $\delta$ Scuti pulsator; **HD 10635**, $P=0.41\,\text{d}$; **HD 10653**, $P=1.07\,\text{d}$; **HD 10661**, $P=4.10\,\text{d}$; **HD 10669**, $P=7.94\,\text{d}$) |
+| **Low-Mass Companion / Grazing EBs (Tier A)** | **7** | Solitary transits on main-sequence and subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$) with realistic crossing times and physically constrained companion radii $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$ (e.g. **HD 10628**, $R_{\text{comp}}=2.13\,R_{\text{Jup}}$; **HD 10668**, $R_{\text{comp}}=2.63\,R_{\text{Jup}}$; **HD 10564**, $R_{\text{comp}}=3.06\,R_{\text{Jup}}$) |
+| **Unlisted Eclipsing Binaries (Tier A)** | **1** | Deep binary eclipse with Keplerian orbital separation strictly verified outside host envelope ($a > R_*$) and $N_{\text{cycles}} \ge 3.0$: **HD 10549** |
+| **Confirmed Benchmark Control (Tier A)** | **1** | **HD 10720** (`CF Hyi`, Algol EB): Detected $P=3.7833\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.97\%}$ agreement, $0.03\%$ difference) |
+| *Unconstrained Parameters (Tier B)* | *4* | *Missing Gaia or TIC stellar radius: HD 10541, HD 10581, HD 10629, HD 10663* |
+| *Audit Flagged: Insufficient Baseline ($N_{\text{cycles}} < 3.0$, Tier C)* | *4* | *HD 10605 ($N=1.8$), HD 10526 ($N=2.4$), HD 10648 ($N=1.5$), HD 10585 ($N=1.3$; grid edge)* |
+| *Physical Rejections: Inside Host Envelope ($a \le R_*$, Tier C)* | *4* | *HD 10525 ($P=0.61\,\text{d}, a=4.4\,R_\odot \ll 28.2\,R_\odot$ giant envelope), HD 10614, HD 10689, HD 10696* |
+| *Physical Rejections: Giant Crossing Time ($T_{\text{dur}} \ll T_{\text{dur, min}}$, Tier C)* | *5* | *HD 10548 ($88\,R_\odot$), HD 10609 ($35\,R_\odot$), HD 10652 ($34\,R_\odot$), HD 10658 ($49\,R_\odot$), HD 10654 ($13\,R_\odot$); duration $3.6\,\text{h}$ requires unphysical $v > 1000\,\text{km/s}$ (blended background binaries)* |
+| *Systematic Rejections: Shared Discrete Grid Bins (Tier C)* | *3* | *HD 10555 & HD 10614 ($10.646\,\text{d}$ discrete bin); HD 10594 ($17.534\,\text{d}$ discrete bin)* |
 
 ---
 
@@ -139,7 +140,7 @@ Scientific integrity requires transparently documenting pipeline failure modes, 
 
 ### 2. Multi-Sector Chronological Sorting & Timestamp Deduplication
 * **Data Discontinuity Forensics:** Multi-sector stitching without strict chronological sorting can cause duplicate timestamps or out-of-order cadences to produce artificial flux jumps (e.g. at Sector 2 boundary BTJD $\sim 1382.7$).
-* **Regression Protection:** Implemented in `downloader.py` and locked with [`test_downloader_sorting.py`](file:///d:/exo_planet/astrohunter_pro/test_downloader_sorting.py), ensuring all stitched light curves are strictly monotonic in time with duplicate timestamps purged before detrending.
+* **Regression Protection:** Implemented in `downloader.py` and locked with [`test_downloader_sorting.py`](test_downloader_sorting.py), ensuring all stitched light curves are strictly monotonic in time with duplicate timestamps purged before detrending.
 
 ### 3. Dynamic Baseline Scatter Ceiling ($3 \times \sigma_{\text{baseline}}$)
 * Fixed noise limits (e.g. $\text{RMS}_{\text{out}} \le 0.03$) are too loose for bright stars where TESS scatter is $< 500\,\text{ppm}$.
@@ -191,7 +192,7 @@ The 9 mismatches illustrate the physical complexity of bright-star photometry an
 * **Catalog Queries:** HD 10702 was cross-checked against the **9th Catalogue of Spectroscopic Binary Orbits (SB9)** and the **TESS Eclipsing Binary Catalog (Prša et al. 2022)**; **neither catalog lists an orbit or eclipses**. The system represents a likely hierarchical triple or uncataloged composite binary where an inner eclipsing pair is diluted by the K giant primary.
 
 ### 6. Centroid Vetting Evidence & TPF Caveats
-* The measured photocenter shift significance ($\sigma$) is stored directly in [`master_discoveries.csv`](file:///d:/exo_planet/astrohunter_pro/master_discoveries.csv) (`centroid_sigma` column).
+* The measured photocenter shift significance ($\sigma$) is stored directly in [`master_discoveries.csv`](master_discoveries.csv) (`centroid_sigma` column).
 * For QLP and fast FFI cadences where pixel moment columns are absent, events are designated `Monitor with TPF` to alert observers to perform pixel-level PRF fitting before rule-out of nearby background blends.
 
 ---

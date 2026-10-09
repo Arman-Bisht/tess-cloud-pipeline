@@ -83,16 +83,20 @@ def process_target(tic_id: str):
         micro_res = run_microlensing(lc_unflat)
         ls_res = run_lomb_scargle(lc_unflat)
         
-        # 2. Multi-Engine Vetting & Gatekeepers (Spec 2.3 & 6.1)
-        category, best_res = vet_signals(bls_res, ls_res, single_res, micro_res, lc_flat, lc_unflat, sectors)
+        # 2. Query catalogs for stellar parameters (radius, Gaia DR3 ID, VSX)
+        candidate_period = (bls_res or {}).get('period') or (ls_res or {}).get('period')
+        catalog_info = check_catalog(ra, dec, "CANDIDATE", candidate_period, tic_id=tic_id, star_name=tic_id)
+        r_star = catalog_info.get('r_star')
+        is_known = catalog_info.get('is_known', False)
+        
+        # 3. Multi-Engine Vetting & Physical Gatekeepers (Spec 2.3 & 6.1)
+        category, best_res = vet_signals(bls_res, ls_res, single_res, micro_res, lc_flat, lc_unflat, sectors, r_star=r_star, is_known=is_known)
         
         if category == "FALSE_POSITIVE":
             update_status(tic_id, "FALSE_POSITIVE")
             purge_cache_for_target(tic_id)
             return
             
-        # 3. High-precision coordinate and Gaia DR3 cross-match
-        catalog_info = check_catalog(ra, dec, category, best_res.get('period'), tic_id=tic_id, star_name=tic_id)
         final_status = get_final_status(category, catalog_info['is_known'], catalog_info['known_label'])
         
         # 4. Generate 5-Panel Diagnostic Plot (Spec 5.2)
@@ -230,13 +234,22 @@ def print_summary():
     import sqlite3
     from config import MASTER_CSV_PATH, DB_PATH
     
-    total_stars = 0
+    total_surveyed = 0
+    with_data = 0
+    false_positives = 0
+    no_data_count = 0
     if DB_PATH.exists():
         try:
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM targets WHERE status NOT IN ('PENDING', 'PROCESSING')")
-            total_stars = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM targets")
+            total_surveyed = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM targets WHERE status != 'NO_DATA' AND status NOT LIKE 'ERROR%'")
+            with_data = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM targets WHERE status = 'FALSE_POSITIVE'")
+            false_positives = c.fetchone()[0]
+            c.execute("SELECT COUNT(*) FROM targets WHERE status = 'NO_DATA'")
+            no_data_count = c.fetchone()[0]
             conn.close()
         except Exception:
             pass
@@ -249,10 +262,14 @@ def print_summary():
             pass
             
     n_disc = len(df)
+    tier_a = len(df[df['confidence'].str.contains('Tier A', na=False)]) if not df.empty else 0
+    tier_b = len(df[df['confidence'].str.contains('Tier B', na=False)]) if not df.empty else 0
+    tier_c = len(df[df['confidence'].str.contains('Tier C', na=False)]) if not df.empty else 0
+    
     unrec_var = len(df[df['category'] == 'UNLISTED_NEEDS_VETTING_VARIABLE_STAR_CANDIDATE']) if not df.empty else 0
     unrec_eb = len(df[df['category'] == 'UNLISTED_NEEDS_VETTING_ECLIPSING_BINARY_CANDIDATE']) if not df.empty else 0
     unrec_transit = len(df[df['category'] == 'UNLISTED_NEEDS_VETTING_LOW_MASS_COMPANION_OR_GRAZING_EB']) if not df.empty else 0
-    other_candidates = n_disc - (unrec_var + unrec_eb + unrec_transit)
+    benchmarks = len(df[df['confidence'].str.contains('Benchmark|Recovery', na=False)]) if not df.empty else 0
 
     import sys
     try:
@@ -263,20 +280,23 @@ def print_summary():
     print("\n" + "=" * 64)
     print("ASTROHUNTER PRO -- VETTED CANDIDATE CATALOG STATUS")
     print("=" * 64)
-    print(f"Total Stars Surveyed:                {total_stars}")
-    print(f"Pristine Vetted Candidates:          {n_disc} (from 120 initial signals)")
+    print(f"Total Stars in Survey Footprint:     {total_surveyed}")
+    print(f"Stars Analyzed with TESS Data:       {with_data}")
+    print(f"Targets without TESS Observations:   {no_data_count}")
+    print(f"Vetted Catalog Records Logged:       {n_disc}")
     print("-" * 64)
-    print("Surviving Astrophysical Breakdown:")
-    print(f"  [+] Unlisted Eclipsing Binaries:           {unrec_eb}")
-    print(f"  [+] Unlisted High-Amplitude Variables:     {unrec_var}")
-    print(f"  [+] Low-Mass Companion / Grazing EBs:      {unrec_transit}")
+    print("Quality & Vetting Confidence Breakdown:")
+    print(f"  [+] Tier A (Pristine Vetted Clean):        {tier_a}")
+    print(f"  [*] Tier B (Probable / Unconstrained):     {tier_b}")
+    print(f"  [-] Tier C (Audit Flagged / Rejected):     {tier_c}")
     print("-" * 64)
-    print("Systematic False-Positive Rejections (Audit Log):")
-    print("  [-] Noise Floor Rejections (<1000 ppm):    63 targets")
-    print("  [-] Stitching & Window Aliases (18-19.6d): 18 targets")
-    print("  [*] Cataloged Reference Controls:          9 targets")
-    print("=" * 64)
-    print("=" * 62 + "\n")
+    print("Astrophysical Classes in Master Catalog:")
+    print(f"  • Unlisted Eclipsing Binaries:             {unrec_eb}")
+    print(f"  • Unlisted High-Amplitude Variables:       {unrec_var}")
+    print(f"  • Low-Mass Companion / Grazing EBs:        {unrec_transit}")
+    print(f"  • Ground-Truth Benchmark Controls:         {benchmarks}")
+    print(f"  • Pipeline Systematic Rejections (FP):     {false_positives} targets")
+    print("=" * 64 + "\n")
 
 if __name__ == "__main__":
     import argparse

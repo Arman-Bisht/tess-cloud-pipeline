@@ -31,10 +31,62 @@ def purge_cache_for_target(tic_id: str):
     except Exception as e:
         logger.warning(f"Failed to purge cache for {tic_id}: {e}")
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
+def sort_and_deduplicate_lightcurve(lc: lk.LightCurve) -> lk.LightCurve:
+    """
+    Sorts lightcurve points strictly in chronological order and purges duplicate timestamps.
+    """
+    try:
+        t_vals = lc.time.value
+        if not np.all(np.diff(t_vals) > 0):
+            sort_idx = np.argsort(t_vals)
+            lc = lc[sort_idx]
+            _, u_idx = np.unique(lc.time.value, return_index=True)
+            lc = lc[np.sort(u_idx)]
+    except Exception as e:
+        logger.warning(f"Error sorting/deduplicating lightcurve: {e}")
+    return lc
+
+@retry(wait=wait_exponential(multiplier=1, min=2, max=10), stop=stop_after_attempt(3), reraise=False)
+def _download_target_collection(target: str) -> Tuple[Optional[lk.LightCurveCollection], List[int]]:
+    """
+    Queries MAST and downloads LightCurveCollection with retry on network errors.
+    Filters by exposure time (prefers 120s SPOC) and deduplicates sectors.
+    """
+    search_result = lk.search_lightcurve(target, author='SPOC')
+    if len(search_result) == 0:
+        search_result = lk.search_lightcurve(target, author='QLP')
+        
+    if len(search_result) == 0:
+        logger.info(f"No lightcurve data found in archive for {target}.")
+        return None, []
+        
+    # Cadence filtering: prefer standard SPOC 120s cadence over 20s fast cadence
+    if 'exptime' in search_result.table.colnames:
+        spoc_120 = search_result[search_result.table['exptime'] == 120]
+        if len(spoc_120) > 0:
+            search_result = spoc_120
+            
+    # Deduplicate sectors so we do not download duplicate cadence products for the same sector
+    sectors = []
+    if 'sequence_number' in search_result.table.colnames:
+        seen_sectors = set()
+        unique_indices = []
+        for idx, sec in enumerate(search_result.table['sequence_number']):
+            if sec is not None and sec not in seen_sectors:
+                seen_sectors.add(sec)
+                unique_indices.append(idx)
+        search_result = search_result[unique_indices]
+        sectors = sorted(list(seen_sectors))
+    elif 'mission' in search_result.table.colnames:
+        sectors = sorted(list(set(int(s.split()[-1]) for s in search_result.table['mission'] if 'Sector' in str(s))))
+
+    search_result = search_result[:MAX_SECTORS]
+    lc_collection = search_result.download_all()
+    return lc_collection, sectors
+
 def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve, lk.LightCurve, List[int]]]:
     """
-    Queries MAST for the target.
+    Queries MAST for the target and produces standardized data streams.
     Returns:
       - lc_flat: Flattened light curve (window=401) for repeating BLS transits.
       - lc_unflat: Unflattened normalized light curve WITHOUT upper outlier clipping (preserves microlensing/flares & variables).
@@ -42,50 +94,17 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
       - sectors: List of observed sector numbers.
     """
     try:
-        # Search SPOC first, fallback to QLP
-        search_result = lk.search_lightcurve(target, author='SPOC')
-        if len(search_result) == 0:
-            search_result = lk.search_lightcurve(target, author='QLP')
-            
-        if len(search_result) == 0:
-            logger.info(f"No lightcurve data found for {target}.")
-            return None
-            
-        # Extract sectors
-        try:
-            if 'sequence_number' in search_result.table.colnames:
-                sectors = sorted(list(set(int(s) for s in search_result.table['sequence_number'] if s is not None)))
-            elif 'mission' in search_result.table.colnames:
-                sectors = sorted(list(set(int(s.split()[-1]) for s in search_result.table['mission'] if 'Sector' in str(s))))
-            else:
-                sectors = []
-        except Exception:
-            sectors = []
-            
-        search_result = search_result[:MAX_SECTORS]
-        lc_collection = search_result.download_all()
+        lc_collection, sectors = _download_target_collection(target)
         if lc_collection is None or len(lc_collection) == 0:
             return None
             
         raw_lc = lc_collection.stitch()
-        
-        # Stream 2: Unflattened Normalized (Stream 2)
-        # Spec 1.2: Remove sigma_upper clipping entirely to preserve positive flux excursions
         stream2_lc = raw_lc.remove_nans().normalize()
         
-        # Ensure light curve is strictly sorted chronologically and free of duplicate timestamps
-        try:
-            t_vals = stream2_lc.time.value
-            if not np.all(np.diff(t_vals) > 0):
-                sort_idx = np.argsort(t_vals)
-                stream2_lc = stream2_lc[sort_idx]
-                _, u_idx = np.unique(stream2_lc.time.value, return_index=True)
-                stream2_lc = stream2_lc[np.sort(u_idx)]
-        except Exception:
-            pass
+        # Chronological sorting and duplicate timestamp removal
+        stream2_lc = sort_and_deduplicate_lightcurve(stream2_lc)
         
-        # Standardize 20-second fast-cadence sectors to standard TESS 2-minute cadence
-        # Reduces noise and provides a 20x speedup across all detection engines
+        # Standardize 20-second fast-cadence sectors to standard TESS 2-minute cadence if needed
         if len(stream2_lc.time) > 40000:
             try:
                 stream2_lc = stream2_lc.bin(time_bin_size=120.0 / 86400.0)
@@ -93,16 +112,14 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
                 pass
         
         # Stream 1: Standard Flattened (window=401) for BLS repeating transits
-        # Only clip lower catastrophic systematic drops, NO sigma_upper clipping
         try:
             stream1_lc = stream2_lc.flatten(window_length=401)
         except Exception:
             stream1_lc = stream2_lc.flatten()
             
-        # Stream 3: Wide-Flattened (window=2001) for Single-Transit Detection (Spec 1.1)
+        # Stream 3: Wide-Flattened (window=2001) for Single-Transit Detection
         try:
             n_points = len(stream2_lc.time)
-            # Window length must be odd and less than length of lightcurve
             wide_win = min(2001, n_points - 1 if (n_points - 1) % 2 != 0 else n_points - 2)
             if wide_win > 200:
                 wide_flat_lc = stream2_lc.flatten(window_length=wide_win)
@@ -114,5 +131,5 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
         return stream1_lc, stream2_lc, wide_flat_lc, sectors
         
     except Exception as e:
-        logger.error(f"Error downloading data for {target}: {e}")
+        logger.error(f"Error processing lightcurves for {target}: {e}")
         return None

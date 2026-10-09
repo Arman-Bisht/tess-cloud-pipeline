@@ -82,7 +82,10 @@ test_targets = [
 
 v = Vizier(row_limit=5)
 for t_name in test_targets:
-    t_row = df[df['name'] == t_name].iloc[0]
+    matching = df[df['name'] == t_name]
+    if matching.empty:
+        continue
+    t_row = matching.iloc[0]
     ra = float(t_row['ra'])
     dec = float(t_row['dec'])
     coord = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg), frame='icrs')

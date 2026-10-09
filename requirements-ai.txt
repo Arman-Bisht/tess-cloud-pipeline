@@ -1,0 +1,12 @@
+# Astrohunter Pro: Optional AI & Foundation Models Extensions
+# Install with: pip install -r requirements-ai.txt
+# Requires Python >= 3.10 and optional CUDA GPU acceleration for NVIDIA RTX
+
+torch>=2.1.0
+timesfm>=1.1.0
+tabpfn>=0.1.10
+ultralytics>=8.0.0
+transformers>=4.35.0
+huggingface-hub>=0.20.0
+scikit-learn>=1.3.0
+pandas>=2.0.0

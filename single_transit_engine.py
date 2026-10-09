@@ -33,10 +33,10 @@ def trapezoid_transit_model(t: np.ndarray, t0: float, depth: float, duration: fl
         
     return flux
 
-def mandel_agol_approx_model(t: np.ndarray, t0: float, depth: float, duration: float, u1: float = 0.3, u2: float = 0.3, baseline: float = 1.0) -> np.ndarray:
+def limb_darkened_transit_model(t: np.ndarray, t0: float, depth: float, duration: float, u1: float = 0.3, u2: float = 0.3, baseline: float = 1.0) -> np.ndarray:
     """
-    Analytic limb-darkened transit model approximation (Mandel & Agol 2002).
-    Includes quadratic limb darkening parameters (u1, u2) producing curved ingress/egress shoulders.
+    Quadratic limb-darkened geometric transit profile approximation.
+    Produces smooth ingress and egress shoulders parameterized by limb-darkening coefficients (u1, u2).
     """
     z = np.abs(t - t0) / np.maximum(duration / 2.0, 1e-4)
     flux = np.full_like(t, baseline, dtype=float)
@@ -125,13 +125,13 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
                 [candidate_t0 - 0.2, 0.0005, 0.02, 0.0, 0.0, med_flux - 0.01],
                 [candidate_t0 + 0.2, 0.50, 0.50, 0.8, 0.8, med_flux + 0.01]
             )
-            popt_ma, _ = curve_fit(mandel_agol_approx_model, t_zoom, y_zoom, p0=ma_p0, bounds=ma_bounds, maxfev=1500)
+            popt_ma, _ = curve_fit(limb_darkened_transit_model, t_zoom, y_zoom, p0=ma_p0, bounds=ma_bounds, maxfev=1500)
             fit_t0, fit_depth, fit_duration, _, _, fit_baseline = popt_ma
-            model_flux = mandel_agol_approx_model(t_zoom, *popt_ma)
-            fit_method = "Mandel-Agol (Limb Darkened)"
+            model_flux = limb_darkened_transit_model(t_zoom, *popt_ma)
+            fit_method = "Limb-Darkened Geometric Fit"
             fit_succeeded = True
         except Exception as ma_err:
-            logger.debug(f"Mandel-Agol fit failed to converge ({ma_err}). Falling back to robust Trapezoid fit.")
+            logger.debug(f"Limb-darkened fit failed to converge ({ma_err}). Falling back to robust Trapezoid fit.")
 
         # 2. Fallback to Trapezoid fit if Mandel-Agol failed
         if not fit_succeeded:
@@ -182,9 +182,7 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         else:
             rms_out = std_flux
 
-        snr = (fit_depth / std_flux) * np.sqrt(max(1, n_in_transit))
-        
-        b_param = float(np.sqrt(np.clip(1.0 - 2.0 * fit_ingress, 0.0, 0.95)))
+        snr = float((fit_depth / std_flux) * np.sqrt(max(1, n_in_transit)))
         
         if snr >= 6.0 and delta_chi2 > 0:
             return {
@@ -195,9 +193,8 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
                 "ingress_ratio": float(fit_ingress),
                 "baseline": float(fit_baseline),
                 "snr": float(snr),
-                "sde": float(snr * 1.5),
+                "sde": float(snr), # For single transits, significance metric is transit SNR (no periodogram SDE)
                 "period": None,
-                "impact_parameter": b_param,
                 "fit_method": fit_method,
                 "t_zoom": t_zoom,
                 "y_zoom": y_zoom,

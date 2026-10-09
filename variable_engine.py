@@ -40,14 +40,31 @@ def run_lomb_scargle(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
         power = ls.power(freqs)
         
         best_idx = np.argmax(power)
-        best_freq = freqs[best_idx]
-        best_period = 1.0 / best_freq
-        best_power = power[best_idx]
+        coarse_freq = float(freqs[best_idx])
+        
+        # Local fine-grid zoom (+/- 2 frequency steps) to eliminate discrete grid quantization
+        df_step = float(freqs[1] - freqs[0])
+        fine_freqs = np.linspace(max(LS_MIN_FREQ, coarse_freq - 2.0 * df_step), min(LS_MAX_FREQ, coarse_freq + 2.0 * df_step), 200)
+        fine_power = ls.power(fine_freqs)
+        fine_best_idx = np.argmax(fine_power)
+        
+        best_freq = float(fine_freqs[fine_best_idx])
+        best_period = float(1.0 / best_freq)
+        best_power = float(fine_power[fine_best_idx])
         
         # Calculate SDE for Lomb-Scargle
-        mean_power = np.mean(power)
-        std_power = np.std(power)
+        mean_power = float(np.mean(power))
+        std_power = float(np.std(power))
         ls_sde = (best_power - mean_power) / std_power if std_power > 0 else 0.0
+        
+        # Period uncertainty estimation from peak FWHM
+        half_power = mean_power + 0.5 * (best_power - mean_power)
+        peak_idx = np.where(fine_power >= half_power)[0]
+        if len(peak_idx) > 1:
+            freq_err = float(abs(fine_freqs[peak_idx[-1]] - fine_freqs[peak_idx[0]]) / 2.355)
+            period_err = float(freq_err / (best_freq**2))
+        else:
+            period_err = float((df_step / 10.0) / (best_freq**2))
         
         # False Alarm Probability (Baluev method)
         try:
@@ -68,6 +85,7 @@ def run_lomb_scargle(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
         
         return {
             "period": float(best_period),
+            "period_err": float(period_err),
             "frequency": float(best_freq),
             "fap": float(fap),
             "amplitude": float(amplitude),
