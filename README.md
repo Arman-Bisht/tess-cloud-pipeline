@@ -8,16 +8,18 @@ Supports both **Local Continuous Scanning** on workstation hardware and **Server
 
 ## 📊 Vetted Candidate Catalog (686 Bright Stars Surveyed)
 
-Following rigorous multi-catalog cross-matching and systematic artifact filtering, the pipeline pruned 81 false positives (63 noise-floor targets and 18 sector-stitching window aliases) from an initial batch of 120 signals, isolating **30 pristine unlisted astrophysical candidates** logged in [`master_discoveries.csv`](file:///d:/exo_planet/astrohunter_pro/master_discoveries.csv) (with complete audit trail in [`reverified_catalog_120.csv`](file:///d:/exo_planet/astrohunter_pro/reverified_catalog_120.csv)):
+Following multi-catalog cross-matching, Keplerian orbital separation checks ($a > R_*$), transit crossing velocity limits on giants ($T_{\text{dur}} \ge T_{\text{dur, min}}$), and grid alias pruning, the pipeline isolates **15 pristine unlisted astrophysical candidates** and **1 confirmed ground-truth benchmark recovery** logged with explicit audit flags in [`master_discoveries.csv`](file:///d:/exo_planet/astrohunter_pro/master_discoveries.csv):
 
 | Vetted Category | Count | Description & Astrophysical Highlights |
 | :--- | :---: | :--- |
-| **Unlisted Eclipsing Binaries (EB)** | **12** | Deep binary eclipses ($\delta > 1\%$ up to $47\%$) away from instrumental period aliases, plus giant host eclipses (e.g. **HD 10525**, $P=0.61\,\text{d}$; **HD 10585**, $P=19.88\,\text{d}$) |
-| **Unlisted High-Amplitude Variable Stars** | **9** | Real stellar pulsators with amplitudes ($0.12\% - 0.43\%$) far above the TESS noise floor (e.g. **HD 10528**, $66.4\,\text{min}$ $\delta$ Scuti pulsator confirmed in 20-second cadence; **HD 10669**, $\text{Amp}=0.43\%$) |
-| **Low-Mass Companion / Grazing EBs** | **9** | Isolated wide-orbit transits with physical companion radii strictly constrained to $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$ ($0.2 - 0.9\,R_\odot$) (e.g. **HD 10628**, $R_{\text{comp}}=2.13\,R_{\text{Jup}}$; **HD 10668**, $R_{\text{comp}}=2.63\,R_{\text{Jup}}$) |
-| **Pristine Unlisted Candidates** | **30** | **100% passed strict noise floor ($>1000\,\text{ppm}$), tight Gaia DR3 astrometry ($\le 3.5^{\prime\prime}$), and artifact tests** |
-| *Audit Rejections (Logged)* | *81* | *63 instrumental noise floor ($<1000\,\text{ppm}$) + 18 sector 18/58/85 window aliases/divergence* |
-| *Cataloged Reference Controls* | *9* | *7 recovered VSX variables, 1 spectroscopic binary (`SB*`), 1 non-transiting RV host (HD 10647)* |
+| **Unlisted High-Amplitude Variable Stars** | **6** | Genuine stellar pulsators/rotators with amplitudes far above noise floor (e.g. **HD 10528**, $103.5\,\text{min}$ $\delta$ Scuti pulsator; **HD 10526**, $P=11.37\,\text{d}$; **HD 10635**, $P=0.41\,\text{d}$; **HD 10653**, $P=1.07\,\text{d}$; **HD 10661**, $P=4.10\,\text{d}$; **HD 10669**, $P=7.94\,\text{d}$) |
+| **Low-Mass Companion / Grazing EBs** | **7** | Solitary transits on main-sequence and subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$) with realistic crossing times and physically constrained companion radii $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$ (e.g. **HD 10628**, $R_{\text{comp}}=2.13\,R_{\text{Jup}}$; **HD 10668**, $R_{\text{comp}}=2.63\,R_{\text{Jup}}$; **HD 10564**, $R_{\text{comp}}=3.06\,R_{\text{Jup}}$) |
+| **Unlisted Eclipsing Binaries (EB)** | **2** | Deep binary eclipses with Keplerian orbital separation strictly verified outside the host envelope ($a > R_*$): **HD 10549** and **HD 10605** ($P=15.17\,\text{d}, a \approx 34.9\,R_\odot > 10.3\,R_\odot$) |
+| **Confirmed Benchmark Control** | **1** | **HD 10720** (`CF Hyi`, Algol EB): Detected $P=3.7833\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.97\%}$ agreement, $0.03\%$ difference) |
+| *Physical Rejections: Inside Host Star ($a \le R_*$)* | *4* | *HD 10525 ($P=0.61\,\text{d}, a=4.4\,R_\odot \ll 28.2\,R_\odot$ giant envelope; reclassified), HD 10614, HD 10689, HD 10696* |
+| *Physical Rejections: Giant Crossing Time ($T_{\text{dur}} \ll T_{\text{dur, min}}$)* | *5* | *HD 10548 ($88\,R_\odot$), HD 10609 ($35\,R_\odot$), HD 10652 ($34\,R_\odot$), HD 10658 ($49\,R_\odot$), HD 10654 ($13\,R_\odot$); duration $3.6\,\text{h}$ requires unphysical $v > 1000\,\text{km/s}$ (blended background binaries)* |
+| *Systematic Rejections: Shared Grid Bins & Boundary Pileups* | *4* | *HD 10555 & HD 10614 ($10.646\,\text{d}$ discrete bin); HD 10594 & HD 10648 ($17.534\,\text{d}$ discrete bin); HD 10585 ($19.88\,\text{d}$, $N_{\text{cycles}} < 3.0$)* |
+| *Unconstrained Parameters (Missing Gaia / TIC Radius)* | *5* | *HD 10541, HD 10581, HD 10629, HD 10648, HD 10663 (placeholder radii eliminated)* |
 
 ---
 
@@ -120,6 +122,77 @@ python main.py --start 10600 --end 10650
 # Vet and analyze a specific astronomical target
 python main.py "HD 10673"
 ```
+
+---
+
+## 🔍 Known Limitations, Systematics, and Benchmark Controls
+
+Scientific integrity requires transparently documenting pipeline failure modes, grid edge effects, and catalog recovery metrics:
+
+### 1. Grid-Edge Ceiling Artifacts & Completeness ($N_{\text{cycles}} \ge 3.0$)
+* **The Grid Edge Phenomenon:** When searching periodic signals on finite baselines with red noise or long-period trends, periodogram power naturally accumulates at the search grid boundaries.
+* **HD 10689 Forensics:** Initial runs detected a period of exactly $P = 20.000\,\text{d}$ because the BLS search grid was bounded at $20.0\,\text{d}$. However, the published ASAS/VSX period is **$218.37\,\text{d}$**! The $20.0\,\text{d}$ detection was an unconstrained grid-boundary pileup artifact, not a recovery of the catalog period.
+* **Principled Rule Implemented:** 
+  1. Any period within $0.5\%$ of the search grid boundary ($P \ge 0.995 \times P_{\max}$ or $P \le 1.005 \times P_{\min}$) is rejected.
+  2. For periodic transit and variable classifications, the signal must complete at least **3 full cycles** across the contiguous baseline ($N_{\text{cycles}} \ge 3.0$). For a single 27-day TESS sector, the maximum measurable period is $\sim 9.0\,\text{d}$; longer events are handled by the single-transit engine.
+  3. Replaced arbitrary exclusion patches with principled filters for TESS orbital harmonics ($13.7\,\text{d}$, $6.85\,\text{d}$) and sector length ($27.4\,\text{d}$).
+
+### 2. Multi-Sector Chronological Sorting & Timestamp Deduplication
+* **Data Discontinuity Forensics:** Multi-sector stitching without strict chronological sorting can cause duplicate timestamps or out-of-order cadences to produce artificial flux jumps (e.g. at Sector 2 boundary BTJD $\sim 1382.7$).
+* **Regression Protection:** Implemented in `downloader.py` and locked with [`test_downloader_sorting.py`](file:///d:/exo_planet/astrohunter_pro/test_downloader_sorting.py), ensuring all stitched light curves are strictly monotonic in time with duplicate timestamps purged before detrending.
+
+### 3. Dynamic Baseline Scatter Ceiling ($3 \times \sigma_{\text{baseline}}$)
+* Fixed noise limits (e.g. $\text{RMS}_{\text{out}} \le 0.03$) are too loose for bright stars where TESS scatter is $< 500\,\text{ppm}$.
+* The out-of-transit noise ceiling in `single_transit_engine.py` is dynamically scaled to $\min(3.0 \times \sigma_{\text{baseline}}, 10,000\,\text{ppm})$.
+
+### 4. Benchmark Controls & Ground-Truth Recovery Statistics
+A catalog cross-match only counts as a genuine benchmark recovery if the detected period and morphology agree with published catalog values ($P_{\text{det}} / P_{\text{catalog}} \approx 1.0, 0.5, \text{or } 2.0$). Unmatched periods must be transparently classified as mismatches or multi-modal variations, not claimed as recoveries.
+
+#### Survey Denominator & Recovery Rates
+* **Total Scanned HD Stars in Block:** 732 stars (497 with TESS observations, 235 `NO_DATA`).
+* **VSX Variable Matches:** 34 unique HD stars in the survey footprint match AAVSO VSX records.
+* **Stars with Published Periods:** 15 of the 34 stars have published periods in VSX (19 stars have unmeasured periods, i.e., `NaN`).
+* **Recovery Rate on Usable Published Periods:** **4 of 15** (**$26.7\%$**)
+  * **3 Fundamental Recoveries (1.0×)**: HD 10720, HD 10502, HD 10081.
+  * **1 Double Harmonic Recovery (2.0×)**: HD 10040 (contact binary).
+* **Overall Recovery Rate on all VSX Matches:** **4 of 34** (**$11.8\%$**).
+* **External Control Benchmark:** **WASP-126** (`WASP-126 b` transiting hot Jupiter) was recovered at $P = 3.2889\,\text{d}$ vs $3.2888\,\text{d}$ ($1.0000\times$), but as a non-HD target it is reported strictly as an external instrument benchmark and excluded from the HD survey denominator.
+
+#### Ground-Truth Comparison Table (All 15 Published-Period HD Stars + External Control)
+
+| Target | Detected $P$ | Catalog $P$ | Ratio | Catalog Type | Astrophysical Recovery Classification |
+| :--- | :---: | :---: | :---: | :--- | :--- |
+| **HD 10720** | **$3.7833\,\text{d}$** | **$3.7845\,\text{d}$** | **$0.9997$** | `EA` (CF Hyi) | **Confirmed Fundamental Recovery (0.03% difference)** |
+| **HD 10502** | **$0.0436\,\text{d}$** | **$0.0436\,\text{d}$** | **$1.0000$** | `DSCTC` (HU Psc) | **Confirmed Fundamental Recovery (62.8 min $\delta$ Scuti)** |
+| **HD 10081** | **$0.7861\,\text{d}$** | **$0.7852\,\text{d}$** | **$1.0011$** | `ACV` (CD-68 66) | **Confirmed Fundamental Recovery (0.11% difference)** |
+| **HD 10040** | **$0.6509\,\text{d}$** | **$0.3258\,\text{d}$** | **$1.9977$** | `ESD\|EC` | **Confirmed Harmonic Recovery (2.0× contact binary period)** |
+| **WASP-126** | **$3.2889\,\text{d}$** | **$3.2888\,\text{d}$** | **$1.0000$** | `EP` (WASP-126 b) | **Confirmed External Control (Hot Jupiter Transit, non-HD)** |
+| *HD 10696* | *$5.9591\,\text{d}$* | *$2.6755\,\text{d}$* | *$2.2273$* | `VAR` (NSV 15376) | *Unresolved Discrepancy (M5 giant multi-modal pulsation)* |
+| *HD 10689* | *$20.000\,\text{d}$* | *$218.37\,\text{d}$* | *$0.0916$* | `MISC` | *Pipeline Grid-Edge Pileup Artifact ($P_{\max}=20.0\,\text{d}$, Rejected)* |
+| *HD 10165* | *$1.2807\,\text{d}$* | *$1.3760\,\text{d}$* | *$0.9307$* | `VAR` | *Period Mismatch / Detrending baseline alias* |
+| *HD 10260* | *$5.0143\,\text{d}$* | *$4.1257\,\text{d}$* | *$1.2154$* | `ROT` | *Rotational Spot Evolution (Different epoch / active latitude)* |
+| *HD 10261* | *$5.3253\,\text{d}$* | *$0.9451\,\text{d}$* | *$5.6346$* | `MISC` | *Period Mismatch (Multi-periodic low-frequency stellar noise)* |
+| *HD 10293* | *$4.0373\,\text{d}$* | *$3.2187\,\text{d}$* | *$1.2543$* | `ROT` | *Rotational Spot Evolution / Differential rotation* |
+| *HD 10649* | *$0.0488\,\text{d}$* | *$0.0418\,\text{d}$* | *$1.1675$* | `PULS` (HIP 8138) | *Pulsation Mode Discrepancy (Non-radial multi-mode beat)* |
+| *HD 10655* | *$4.8135\,\text{d}$* | *$3.5474\,\text{d}$* | *$1.3569$* | `ROT` | *Rotational Spot Evolution / Differential rotation* |
+| *HD 10676* | *$0.0469\,\text{d}$* | *$0.0146\,\text{d}$* | *$3.2123$* | `VAR` | *High-frequency alias discrepancy* |
+| *HD 10516* | *Unresolved* | *$19.500\,\text{d}$* | *—* | `GCAS` ($\phi$ Per) | *Non-Periodic Detection (Be star circumstellar disk outbursts)* |
+| *HD 10560* | *Unresolved* | *$3.2121\,\text{d}$* | *—* | `ACV:` (CD Phe) | *Low SDE Detection (Below automated significance threshold)* |
+
+#### Forensics on Mismatches
+The 9 mismatches illustrate the physical complexity of bright-star photometry and guide pipeline refinement:
+1. **Multi-Mode Pulsators & M Giants (HD 10696, HD 10649):** M-type and pulsating stars display complex superposition of multiple radial and non-radial modes; single-frequency Lomb-Scargle selects the dominant mode in the TESS epoch rather than ground-based catalog modes.
+2. **Differential Stellar Rotation & Spot Migration (HD 10260, HD 10293, HD 10655):** Active stars exhibit latitude-dependent rotational shear. Spot formation at different latitudes between historical surveys and TESS yields $\sim 20 - 35\%$ period variations.
+3. **Baseline Constraints & Grid Boundaries (HD 10689):** For a 27-day TESS sector, measuring periods $> 20\,\text{d}$ requires multi-sector coverage. Power accumulated at the $20.0\,\text{d}$ search grid boundary, correctly caught and rejected by the new $N_{\text{cycles}} \ge 3.0$ and boundary proximity filter.
+
+### 5. Physical Modeling of Close Binaries with Giant Primaries (HD 10702)
+* **Astrophysical Separation:** HD 10702 is classified in SIMBAD as `SB* K1III(+G)`. At the detected period $P = 1.7623\,\text{d}$, Kepler's third law yields an orbital semi-major axis $a \approx 8.33\,R_\odot$ (assuming $M_{\text{tot}} \approx 2.5\,M_\odot$). Because a typical K1III giant star has a physical radius of $R \approx 8 - 12\,R_\odot$, the giant would completely fill or exceed its orbital separation.
+* **Harmonic Period Test:** Folded at double the period ($2\times P = 3.5247\,\text{d}$), the separation expands to $a \approx 13.23\,R_\odot$ with primary eclipse depth $2.12\%$ and secondary eclipse depth $0.045\%$.
+* **Catalog Queries:** HD 10702 was cross-checked against the **9th Catalogue of Spectroscopic Binary Orbits (SB9)** and the **TESS Eclipsing Binary Catalog (Prša et al. 2022)**; **neither catalog lists an orbit or eclipses**. The system represents a likely hierarchical triple or uncataloged composite binary where an inner eclipsing pair is diluted by the K giant primary.
+
+### 6. Centroid Vetting Evidence & TPF Caveats
+* The measured photocenter shift significance ($\sigma$) is stored directly in [`master_discoveries.csv`](file:///d:/exo_planet/astrohunter_pro/master_discoveries.csv) (`centroid_sigma` column).
+* For QLP and fast FFI cadences where pixel moment columns are absent, events are designated `Monitor with TPF` to alert observers to perform pixel-level PRF fitting before rule-out of nearby background blends.
 
 ---
 

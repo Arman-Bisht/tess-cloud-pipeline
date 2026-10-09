@@ -167,13 +167,17 @@ def run_single_transit(lc_wide_flat: lk.LightCurve) -> Optional[Dict[str, Any]]:
         # Check out-of-transit baseline isolation and stability
         if np.any(~in_transit_mask):
             rms_out = float(np.sqrt(np.mean(residuals[~in_transit_mask]**2)))
-            out_min = float(np.nanmin(y_zoom[~in_transit_mask]))
-            # If out-of-transit flux contains other dips > 50% of the candidate depth, it is not a solitary transit
-            if out_min < fit_baseline - 0.5 * fit_depth:
-                logger.debug(f"Rejected non-isolated single transit: out_min={out_min:.4f} < threshold={fit_baseline - 0.5 * fit_depth:.4f}")
+            out_flux = y_zoom[~in_transit_mask]
+            # Smooth out-of-transit flux over 5 cadences to test for coherent secondary dips rather than single-point noise
+            out_smooth = uniform_filter1d(out_flux, size=min(5, len(out_flux))) if len(out_flux) >= 5 else out_flux
+            out_min = float(np.nanmin(out_smooth))
+            dip_threshold = max(0.5 * fit_depth, 3.5 * std_flux)
+            if out_min < fit_baseline - dip_threshold:
+                logger.debug(f"Rejected non-isolated single transit: out_min={out_min:.4f} < threshold={fit_baseline - dip_threshold:.4f}")
                 return None
-            if rms_out > 0.03:
-                logger.debug(f"Rejected single transit due to unstable local baseline: rms_out={rms_out:.4f} > 0.03")
+            noise_ceiling = min(3.0 * std_flux, 0.01)
+            if rms_out > noise_ceiling:
+                logger.debug(f"Rejected single transit due to unstable local baseline: rms_out={rms_out:.4f} > noise_ceiling={noise_ceiling:.4f}")
                 return None
         else:
             rms_out = std_flux

@@ -56,10 +56,10 @@ def check_odd_even(lc: lk.LightCurve, period: float, epoch: float, duration: flo
         
     return float(odd_depth / even_depth)
 
-def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Optional[float], duration: Optional[float]) -> Tuple[bool, str]:
+def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Optional[float], duration: Optional[float]) -> Tuple[bool, float, str]:
     """
     Checks if the photocenter (centroid) shifts during transit, indicating a blended nearby star.
-    Returns (is_target, status_description).
+    Returns (is_target, shift_sigma, status_description).
     """
     try:
         col_c = None
@@ -74,36 +74,36 @@ def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Opt
                 break
                 
         if col_c is None or row_c is None:
-            return True, "No centroid columns (QLP/FFI cadence) - Passed (monitor with TPF)"
+            return True, np.nan, "No centroid columns (QLP/FFI cadence) - Monitor with TPF"
             
         if period is None or epoch is None or duration is None:
-            return True, "Non-periodic event - Centroid Passed"
+            return True, np.nan, "Non-periodic event - Centroid Not Run"
             
         t = lc.time.value
         mask = np.isfinite(t) & np.isfinite(col_c) & np.isfinite(row_c)
         t, col_c, row_c = t[mask], col_c[mask], row_c[mask]
         
         if len(t) < 50:
-            return True, "Centroid NaN-filled (QLP/FFI) - Passed (monitor with TPF)"
+            return True, np.nan, "Centroid NaN-filled (QLP/FFI) - Monitor with TPF"
             
         phase = ((t - epoch + 0.5 * period) % period) / period - 0.5
         in_transit = np.abs(phase) < (duration / (2.0 * period))
         out_transit = ~in_transit
         
         if np.sum(in_transit) < 5 or np.sum(out_transit) < 20:
-            return True, "Insufficient transit centroid points (Passed)"
+            return True, np.nan, "Insufficient transit centroid points - Monitor with TPF"
             
         d_col = abs(np.median(col_c[in_transit]) - np.median(col_c[out_transit]))
         d_row = abs(np.median(row_c[in_transit]) - np.median(row_c[out_transit]))
         std_col = np.std(col_c[out_transit])
         std_row = np.std(row_c[out_transit])
         
-        shift_sigma = max(d_col / max(1e-5, std_col), d_row / max(1e-5, std_row))
+        shift_sigma = float(max(d_col / max(1e-5, std_col), d_row / max(1e-5, std_row)))
         if shift_sigma > 3.5:
-            return False, f"Significant photocenter shift ({shift_sigma:.1f}σ) - likely blended star"
-        return True, f"Clean ({shift_sigma:.1f}σ shift)"
+            return False, round(shift_sigma, 2), f"Significant photocenter shift ({shift_sigma:.1f}σ) - likely blend"
+        return True, round(shift_sigma, 2), f"Clean ({shift_sigma:.1f}σ shift)"
     except Exception as e:
-        return True, f"Centroid check bypassed ({e})"
+        return True, np.nan, f"Centroid check bypassed ({e})"
 
 def check_harmonics(period: float) -> bool:
     if period is None:
@@ -114,12 +114,47 @@ def check_harmonics(period: float) -> bool:
             return True
     return False
 
+def compute_observed_coverage_days(t: np.ndarray) -> float:
+    """
+    Computes actual sum of observed baseline segments, excluding inter-sector and multi-year gaps (dt > 1.0 day).
+    Prevents wide gaps across multi-year sectors from artificially inflating cycle counts.
+    """
+    if len(t) < 2:
+        return 0.0
+    dt = np.diff(t)
+    gap_indices = np.where(dt > 1.0)[0]
+    segment_starts = np.insert(gap_indices + 1, 0, 0)
+    segment_ends = np.append(gap_indices, len(t) - 1)
+    
+    total_coverage = 0.0
+    for s_start, s_end in zip(segment_starts, segment_ends):
+        if s_end > s_start:
+            total_coverage += float(t[s_end] - t[s_start])
+    return max(total_coverage, 1.0)
+
+def check_grid_boundary(period: float) -> bool:
+    if period is None:
+        return False
+    from config import BLS_MIN_PERIOD, BLS_MAX_PERIOD
+    # Reject search grid boundary pinning within 0.5% of min or max period
+    if period >= 0.995 * BLS_MAX_PERIOD or period <= 1.005 * BLS_MIN_PERIOD:
+        return True
+    return False
+
 def check_tess_systematics(period: float) -> bool:
     if period is None:
         return False
-    # Filter TESS orbital downlink gap (13.7d), sector length (27.4d), 
-    # Sector 18/58/85 window alias (12.15-12.25d), and sector stitching / BLS grid boundary alias (18.0-20.0d)
-    if (12.15 <= period <= 12.25) or (13.0 < period < 15.0) or (18.0 <= period <= 20.0) or (26.5 < period < 28.5):
+    # Narrow TESS orbital downlink resonance (13.7 +/- 0.15d) and half-orbit (6.85 +/- 0.10d)
+    if (13.55 <= period <= 13.85) or (6.75 <= period <= 6.95):
+        return True
+    # Narrow full sector duration alias (27.4 +/- 0.4d)
+    if 27.0 <= period <= 27.8:
+        return True
+    # Narrow Sector 18/58/85 window alias
+    if 12.18 <= period <= 12.24:
+        return True
+    # BLS Search Grid Boundary Pinning
+    if check_grid_boundary(period):
         return True
     if check_harmonics(period):
         return True
@@ -172,19 +207,25 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             if binned_depth < 0.35 * depth:
                 return "FALSE_POSITIVE", {}
                 
-            time_span = float(lc_flat.time.value[-1] - lc_flat.time.value[0])
-            cycles = time_span / period if period > 0 else 1.0
-            
+            t_vals = lc_flat.time.value
+            observed_baseline = compute_observed_coverage_days(t_vals)
+            cycles = observed_baseline / period if period > 0 else 1.0
+            # Principled minimum cycles rule: require >= 3 cycles of actual observed coverage
+            if cycles < 3.0:
+                return "FALSE_POSITIVE", {}
+                
             sec_pass, sec_ratio = check_secondary_eclipse(lc_flat, period, epoch, depth, duration)
             odd_even_ratio = check_odd_even(lc_flat, period, epoch, duration)
-            centroid_pass, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
+            centroid_pass, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
             
             bls_res.update({
                 "cycles": cycles,
+                "n_cycles": round(cycles, 1),
                 "sec_pass": sec_pass,
                 "sec_ratio": sec_ratio,
                 "odd_even_ratio": odd_even_ratio,
                 "centroid_pass": centroid_pass,
+                "centroid_shift_sigma": centroid_sigma,
                 "centroid_desc": centroid_desc,
                 "sectors": sectors
             })
@@ -207,14 +248,16 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         if depth > 0.50:
             return "FALSE_POSITIVE", {}
             
-        centroid_pass, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
+        centroid_pass, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
         
         single_res.update({
             "cycles": 1.0,
+            "n_cycles": 1.0,
             "sec_pass": True,
             "sec_ratio": 0.0,
             "odd_even_ratio": 1.0,
             "centroid_pass": centroid_pass,
+            "centroid_shift_sigma": centroid_sigma,
             "centroid_desc": centroid_desc,
             "sectors": sectors,
             "tier": "A" if sde >= 10.0 and centroid_pass else "B"
@@ -228,10 +271,12 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
     if micro_res and micro_res.get('sde', 0) >= 7.0:
         micro_res.update({
             "cycles": 1.0,
+            "n_cycles": 1.0,
             "sec_pass": True,
             "sec_ratio": 0.0,
             "odd_even_ratio": 1.0,
             "centroid_pass": True,
+            "centroid_shift_sigma": 0.0,
             "centroid_desc": "Symmetric magnification fit",
             "sectors": sectors,
             "tier": "A" if micro_res['sde'] >= 10.0 else "B"
@@ -248,9 +293,13 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             return "FALSE_POSITIVE", {}
             
         sde = ls_res.get('sde', 7.0)
-        time_span = float(lc_unflat.time.value[-1] - lc_unflat.time.value[0])
-        cycles = time_span / period if period > 0 else 1.0
-        
+        t_vals = lc_unflat.time.value
+        observed_baseline = compute_observed_coverage_days(t_vals)
+        cycles = observed_baseline / period if period > 0 else 1.0
+        # Principled minimum cycles rule: require >= 3 cycles of actual observed coverage
+        if cycles < 3.0:
+            return "FALSE_POSITIVE", {}
+            
         # Enforce smooth, symmetric phase coverage (reject isolated sector edge spikes)
         _, fl_binned = phase_fold_and_bin(lc_unflat, period, float(lc_unflat.time.value[0]), bins=40)
         med_b = np.nanmedian(fl_binned)
@@ -265,18 +314,60 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             return "FALSE_POSITIVE", {}
             
         if not check_tess_systematics(period):
+            centroid_pass, centroid_sigma, centroid_desc = check_centroid_motion(lc_unflat, period, float(lc_unflat.time.value[0]), 0.1)
             is_catalog_tier = ls_res['fap'] < LS_FAP_THRESHOLD
             tier = "A" if (is_catalog_tier and sde >= 10.0 and cycles >= 3.0) else "B"
             ls_res.update({
                 "cycles": cycles,
+                "n_cycles": round(cycles, 1),
                 "sec_pass": True,
                 "sec_ratio": 0.0,
                 "odd_even_ratio": 1.0,
-                "centroid_pass": True,
-                "centroid_desc": "Periodic variability",
+                "centroid_pass": centroid_pass,
+                "centroid_shift_sigma": centroid_sigma,
+                "centroid_desc": centroid_desc,
                 "sectors": sectors,
                 "tier": tier
             })
             return "VARIABLE_STAR", ls_res
 
     return "FALSE_POSITIVE", {}
+
+def check_orbit_physical_separation(period: Optional[float], r_star: Optional[float], m_star: Optional[float] = None) -> Tuple[bool, float, str]:
+    """
+    Computes Keplerian orbital semi-major axis:
+    a = 215.032 * (M_tot * (P / 365.25)^2)^(1/3) R_sun
+    Ensures that orbital separation exceeds host star radius R*.
+    """
+    if period is None or period <= 0:
+        return True, 0.0, "Non-periodic"
+    m_tot = max(float(m_star) if m_star and not np.isnan(m_star) else 2.5, 2.5)
+    a_au = (m_tot * (period / 365.25)**2)**(1/3)
+    a_rsun = a_au * 215.032
+    
+    if r_star is not None and not np.isnan(r_star) and r_star > 0:
+        if a_rsun <= r_star:
+            return False, a_rsun, f"Unphysical orbit: a={a_rsun:.2f} R_sun <= R*={r_star:.2f} R_sun (inside star envelope)"
+        return True, a_rsun, f"Separation a={a_rsun:.2f} R_sun > R*={r_star:.2f} R_sun"
+    return True, a_rsun, f"Separation a={a_rsun:.2f} R_sun (R* unknown)"
+
+def check_transit_duration_physical(duration_days: Optional[float], r_star: Optional[float], m_star: Optional[float] = None) -> Tuple[bool, float, str]:
+    """
+    Checks if a transit or eclipse duration across a giant star is physically possible.
+    For a star of radius R*, the maximum orbital speed is bounded by escape velocity:
+    v_esc = 617.5 * sqrt(M_star / R_star) km/s
+    Minimum diameter crossing duration:
+    T_dur_min = (2 * R_star) / v_esc = 0.0261 * (R_star^1.5 / sqrt(M_star)) days.
+    """
+    if duration_days is None or duration_days <= 0:
+        return True, 0.0, "No duration"
+    if r_star is None or np.isnan(r_star) or r_star < 5.0:
+        return True, 0.0, "Normal / dwarf star duration valid"
+        
+    m_val = max(float(m_star) if m_star and not np.isnan(m_star) else 2.5, 1.5)
+    t_dur_min = 0.0261 * (r_star**1.5 / np.sqrt(m_val))
+    
+    # Allow grazing chords down to 20% of central diameter duration
+    if duration_days < 0.20 * t_dur_min:
+        return False, t_dur_min, f"Duration {duration_days*24:.1f}h is unphysically short for R*={r_star:.1f} R_sun (min crossing {0.2*t_dur_min*24:.1f}h; likely background blend)"
+    return True, t_dur_min, "Physically consistent transit duration"

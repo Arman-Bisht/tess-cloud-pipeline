@@ -65,6 +65,11 @@ def init_db():
         ("confidence", "TEXT"),
         ("simbad_type", "TEXT"),
         ("vsx_known", "BOOLEAN"),
+        ("vsx_period", "REAL"),
+        ("period_ratio", "REAL"),
+        ("n_cycles", "REAL"),
+        ("centroid_shift_sigma", "REAL"),
+        ("centroid_desc", "TEXT"),
         ("sectors", "TEXT"),
         ("plot_path", "TEXT"),
         ("detection_timestamp", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
@@ -85,8 +90,10 @@ def init_db():
         with open(MASTER_CSV_PATH, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow([
-                "name", "ra", "dec", "tic_id", "period", "amplitude", 
-                "depth", "category", "simbad_type", "vsx_known", "confidence", "notes"
+                "name", "tic_id", "gaia_dr3_id", "ra", "dec", "period", "vsx_period", "period_ratio", 
+                "n_cycles", "centroid_sigma", "amplitude", "depth", "category", "r_star_rsun", 
+                "r_comp_rjup", "simbad_type", "vsx_known", "gaia_ok", "radius_ok", "orbit_phys_ok", 
+                "duration_phys_ok", "confidence", "notes"
             ])
 
 def upsert_target(tic_id: str, name: str, ra: float, dec: float, status: str = "PENDING"):
@@ -164,15 +171,23 @@ def save_discovery(tic_id: str,
     vsx_known = catalog_info.get('vsx_known', False)
     sectors_str = ",".join(map(str, sectors)) if sectors else ""
     
+    vsx_period = catalog_info.get('vsx_period')
+    period_ratio = catalog_info.get('period_ratio')
+    n_cycles = metrics.get('n_cycles', round(metrics.get('cycles', 1.0), 1))
+    centroid_sigma = metrics.get('centroid_shift_sigma', 0.0)
+    centroid_desc = metrics.get('centroid_desc', 'Passed')
+    
     cursor.execute('''
     INSERT INTO signals (
-        tic_id, name, ra, dec, category, type, period, epoch, depth, 
+        tic_id, name, ra, dec, category, type, period, vsx_period, period_ratio,
+        n_cycles, centroid_shift_sigma, centroid_desc, epoch, depth, 
         amplitude, duration, sde, fap, tier, confidence, simbad_type, 
         vsx_known, sectors, plot_path
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        tic_id, name, ra, dec, category, category, period, epoch, depth,
+        tic_id, name, ra, dec, category, category, period, vsx_period, period_ratio,
+        n_cycles, centroid_sigma, centroid_desc, epoch, depth,
         amplitude, duration, sde, fap, tier, confidence, simbad_type,
         vsx_known, sectors_str, plot_path
     ))
@@ -180,12 +195,52 @@ def save_discovery(tic_id: str,
     conn.close()
     
     # Maintain Master CSV with clean physical parameters matching master_discoveries.csv
-    # columns: name, tic_id, gaia_dr3_id, ra, dec, period, amplitude, depth, category, r_star_rsun, r_comp_rjup, simbad_type, vsx_known, confidence, notes
     gaia_dr3_id = catalog_info.get('gaia_dr3_id', 'N/A')
-    r_star = metrics.get('r_star_rsun', 1.0)
+    r_star = catalog_info.get('r_star_rsun')
+    if r_star is not None:
+        try:
+            if np.isnan(float(r_star)) or float(r_star) <= 0:
+                r_star = None
+            else:
+                r_star = float(r_star)
+        except Exception:
+            r_star = None
+
     r_comp = None
-    if depth and depth > 0 and depth < 0.50:
-        r_comp = round((r_star * np.sqrt(depth)) / 0.10279, 2)
+    if "VARIABLE" not in category.upper() and r_star is not None and r_star > 0:
+        if depth and depth > 0 and depth < 0.50:
+            r_comp = round((r_star * np.sqrt(depth)) / 0.10279, 2)
+
+    gaia_ok = "YES" if gaia_dr3_id and gaia_dr3_id not in ["N/A", "--", "None"] else "NO"
+    radius_ok = "YES" if r_star is not None else "NO"
+    
+    # Orbital physical separation check
+    orbit_phys_ok = "N/A"
+    if period and period != "Single":
+        try:
+            p_val = float(period)
+            a_rsun = 215.032 * (2.5 * (p_val / 365.25)**2)**(1/3)
+            if r_star is not None and r_star > 0:
+                orbit_phys_ok = "YES" if a_rsun > r_star else "NO (Inside Star)"
+            else:
+                orbit_phys_ok = "YES (R* unknown)"
+        except Exception:
+            pass
+            
+    # Transit duration physical check
+    duration_phys_ok = "YES"
+    if duration and duration > 0 and r_star is not None and r_star >= 5.0:
+        t_dur_min = 0.0261 * (r_star**1.5 / np.sqrt(2.5))
+        if duration < 0.20 * t_dur_min:
+            duration_phys_ok = "NO (Too Fast for Giant)"
+
+    # Derive tier confidence from audit flags
+    if gaia_ok == "YES" and radius_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES":
+        clean_tier = "Tier A (Vetted Clean)"
+    elif gaia_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES":
+        clean_tier = "Tier B (Radius Unconstrained)"
+    else:
+        clean_tier = "Tier C (Audit Flagged)"
 
     notes = f"SDE={sde:.1f}, Sectors={sectors_str}" if sde else f"Sectors={sectors_str}"
     with open(MASTER_CSV_PATH, 'a', newline='', encoding='utf-8') as f:
@@ -197,14 +252,22 @@ def save_discovery(tic_id: str,
             round(ra, 6) if ra else "", 
             round(dec, 6) if dec else "", 
             round(period, 5) if period else "Single", 
+            round(vsx_period, 5) if vsx_period else "",
+            round(period_ratio, 4) if period_ratio else "",
+            round(n_cycles, 1) if n_cycles else "1.0",
+            round(centroid_sigma, 2) if centroid_sigma is not None else "0.0",
             round(amplitude, 6) if amplitude else "", 
             round(depth, 5) if depth else "", 
             category, 
-            r_star,
+            round(r_star, 2) if r_star is not None else "",
             r_comp if r_comp is not None else "",
             simbad_type, 
             "YES" if vsx_known else "NO", 
-            confidence, 
+            gaia_ok,
+            radius_ok,
+            orbit_phys_ok,
+            duration_phys_ok,
+            clean_tier, 
             notes
         ])
 

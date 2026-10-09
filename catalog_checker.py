@@ -45,53 +45,69 @@ def format_sexagesimal(ra_deg: float, dec_deg: float) -> str:
     except Exception:
         return f"{ra_deg:.4f}d, {dec_deg:.4f}d"
 
-def fetch_gaia_metadata(star_name: str) -> Tuple[str, float]:
-    """Retrieves Gaia DR3 Source ID and TESS magnitude from TIC."""
+def fetch_gaia_metadata(star_name: str) -> Tuple[str, float, Optional[float], Optional[float]]:
+    """Retrieves Gaia DR3 Source ID, TESS magnitude, stellar radius, and mass from TIC."""
     gaia_id = "N/A"
     tmag = 9.0
+    r_star = None
+    m_star = None
     try:
         tic_res = Catalogs.query_object(star_name, catalog="TIC", radius=0.005)
         if len(tic_res) > 0:
             row = tic_res[0]
             if 'GAIA' in row.colnames and row['GAIA'] is not None:
-                gaia_id = str(row['GAIA'])
+                g_str = str(row['GAIA']).strip()
+                if g_str and g_str != '--' and g_str.lower() != 'none':
+                    gaia_id = g_str
             if 'Tmag' in row.colnames and row['Tmag'] is not None and not np.isnan(float(row['Tmag'])):
                 tmag = float(row['Tmag'])
+            if 'rad' in row.colnames and row['rad'] is not None and not np.isnan(float(row['rad'])):
+                r_star = float(row['rad'])
+            if 'mass' in row.colnames and row['mass'] is not None and not np.isnan(float(row['mass'])):
+                m_star = float(row['mass'])
     except Exception as e:
-        logger.warning(f"Failed to fetch Gaia metadata for {star_name}: {e}")
-    return gaia_id, tmag
+        logger.warning(f"Failed to fetch Gaia/TIC metadata for {star_name}: {e}")
+    return gaia_id, tmag, r_star, m_star
 
 def check_catalog(ra: float, dec: float, category: str, period: Optional[float], tic_id: Optional[str] = None, star_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Performs strict astronomical cross-matching:
     1. Exact TIC ID matching against NASA Exoplanet Archive TOIs.
     2. Exact star identifier query in SIMBAD (falling back to tight <=2.5" cone).
-    3. Tight <=3.0" cone query in AAVSO VSX to eliminate faint background neighbors.
+    3. Graduated query in AAVSO VSX to eliminate faint background neighbors and check period agreement.
     
-    Returns structured catalog matching info including Gaia ID and match separation in arcsec.
+    Returns structured catalog matching info including Gaia ID, stellar radius, and match separation in arcsec.
     """
     coord = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg))
     
     gaia_id = "N/A"
     tmag = 9.0
+    r_star = None
+    m_star = None
     if star_name:
-        gaia_id, tmag = fetch_gaia_metadata(star_name)
+        gaia_id, tmag, r_star, m_star = fetch_gaia_metadata(star_name)
 
     info = {
         "is_known": False,
         "known_label": None,
+        "is_confirmed_recovery": False,
         "gaia_dr3_id": gaia_id,
+        "r_star_rsun": r_star,
+        "m_star_msun": m_star,
         "match_sep_arcsec": 0.0,
         "vsx_known": False,
         "vsx_name": "None",
         "vsx_type": "None",
+        "vsx_period": None,
+        "period_ratio": None,
         "vsx_text": "❌ Not found",
         "simbad_type": "None",
         "simbad_main_id": star_name if star_name else "Unknown",
         "simbad_text": "❌ Not cataloged",
         "archive_known": False,
         "archive_text": "❌ Not found",
-        "coords_str": format_sexagesimal(ra, dec)
+        "coords_str": format_sexagesimal(ra, dec),
+        "neighbor_review_needed": False
     }
     
     # 1. Exact NASA TOI Check by TIC ID
@@ -163,24 +179,81 @@ def check_catalog(ra: float, dec: float, category: str, period: Optional[float],
     except Exception as e:
         logger.warning(f"SIMBAD query failed: {e}")
         
-    # 3. AAVSO VSX: Tight 3.0-arcsecond cone to prevent neighbor matching
+    # 3. AAVSO VSX: Graduated matching (Name match -> <3.0" exact match -> 3.0"-30.0" neighbor review)
     try:
         vizier = Vizier(catalog="B/vsx/vsx", columns=["OID", "Name", "Type", "Period", "RAJ2000", "DEJ2000"])
-        result = vizier.query_region(coord, radius=3.0 * u.arcsec)
-        if len(result) > 0 and len(result[0]) > 0:
-            vsx_row = result[0][0]
+        vsx_row = None
+        sep = 0.0
+
+        # Attempt A: Match by exact star identifier first
+        if star_name:
+            try:
+                name_res = vizier.query_object(star_name)
+                if name_res and len(name_res) > 0 and len(name_res[0]) > 0:
+                    vsx_row = name_res[0][0]
+                    if 'RAJ2000' in vsx_row.colnames and 'DEJ2000' in vsx_row.colnames:
+                        match_c = SkyCoord(ra=vsx_row['RAJ2000'], dec=vsx_row['DEJ2000'], unit=(u.deg, u.deg))
+                        sep = float(coord.separation(match_c).arcsec)
+            except Exception:
+                pass
+
+        # Attempt B: Fallback to spatial cone (up to 30.0 arcseconds)
+        if vsx_row is None:
+            region_res = vizier.query_region(coord, radius=30.0 * u.arcsec)
+            if region_res and len(region_res) > 0 and len(region_res[0]) > 0:
+                vsx_row = region_res[0][0]
+                match_c = SkyCoord(ra=vsx_row['RAJ2000'], dec=vsx_row['DEJ2000'], unit=(u.deg, u.deg))
+                sep = float(coord.separation(match_c).arcsec)
+
+        if vsx_row is not None:
             vsx_name = str(vsx_row['Name'])
             vsx_type = str(vsx_row['Type']) if 'Type' in vsx_row.colnames else "Var"
-            match_c = SkyCoord(ra=vsx_row['RAJ2000'], dec=vsx_row['DEJ2000'], unit=(u.deg, u.deg))
-            sep = float(coord.separation(match_c).arcsec)
-            
-            info["vsx_known"] = True
+            raw_p = vsx_row['Period'] if 'Period' in vsx_row.colnames else None
+            vsx_p = None
+            try:
+                if raw_p is not None and not np.isnan(float(raw_p)) and float(raw_p) > 0:
+                    vsx_p = float(raw_p)
+            except Exception:
+                vsx_p = None
+
             info["vsx_name"] = vsx_name
             info["vsx_type"] = vsx_type
+            info["vsx_period"] = vsx_p
             info["match_sep_arcsec"] = sep
-            info["vsx_text"] = f"✅ Known ({vsx_name} - {vsx_type})"
-            info["is_known"] = True
-            info["known_label"] = f"KNOWN_VSX_{vsx_type}"
+
+            # Graduated decision based on angular separation
+            if sep <= 3.0:
+                info["vsx_known"] = True
+                info["is_known"] = True
+                
+                # Check period agreement if both detected and catalog periods exist
+                if period is not None and vsx_p is not None:
+                    ratio = float(period) / float(vsx_p)
+                    info["period_ratio"] = round(ratio, 4)
+                    
+                    is_fund = abs(ratio - 1.0) <= 0.05
+                    is_half = abs(ratio - 0.5) <= 0.05
+                    is_double = abs(ratio - 2.0) <= 0.05
+                    
+                    if is_fund or is_half or is_double:
+                        info["is_confirmed_recovery"] = True
+                        info["known_label"] = f"CONFIRMED_VSX_RECOVERY_{vsx_type}"
+                        info["vsx_text"] = f"✅ Confirmed Recovery ({vsx_name} - {vsx_type}, P={vsx_p:.4f}d, ratio={ratio:.2f})"
+                    else:
+                        info["is_confirmed_recovery"] = False
+                        info["known_label"] = f"KNOWN_VSX_{vsx_type}_DISCREPANT_PERIOD"
+                        info["vsx_text"] = f"⚠️ Cataloged Discrepant ({vsx_name} - {vsx_type}, VSX P={vsx_p:.4f}d vs Det P={period:.4f}d, ratio={ratio:.2f})"
+                else:
+                    info["is_confirmed_recovery"] = False
+                    info["known_label"] = f"KNOWN_VSX_{vsx_type}"
+                    info["vsx_text"] = f"✅ Known ({vsx_name} - {vsx_type})"
+            else:
+                # Separation is between 3.0" and 30.0": potential blend or coarse catalog coordinate
+                info["neighbor_review_needed"] = True
+                info["is_known"] = True
+                info["known_label"] = "POSSIBLE_NEIGHBOR_NEEDS_REVIEW"
+                info["vsx_text"] = f"⚠️ Nearby Variable ({vsx_name} in {sep:.1f}\")"
+
     except Exception as e:
         logger.warning(f"VSX query failed: {e}")
         
