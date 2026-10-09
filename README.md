@@ -211,27 +211,28 @@ The repository includes production Terraform configuration for zero-cost deploym
 ## 📁 Repository Structure
 
 ```text
-├── main.py                   # CLI scanner (--summary, --count, target) & Cloud Run entrypoint
-├── visualizer.py             # Thread-safe 5-panel scientific diagnostic plotter
-├── downloader.py             # TESS Lightkurve downloader (SPOC, QLP, 20s fast-cadence)
-├── bls_engine.py             # Box Least Squares (BLS) transit detection engine
-├── variable_engine.py        # Lomb-Scargle periodic variability engine
-├── single_transit_engine.py  # Isolated dip single-transit detector
-├── microlensing_engine.py    # Paczyński microlensing search engine
-├── vetter.py                 # Secondary eclipse, odd/even, and centroid tests
-├── catalog_checker.py        # SIMBAD, AAVSO VSX, and NASA Exoplanet Archive cross-matching
-├── notifier.py               # Telegram Bot alert dispatcher with async retries
-├── db.py                     # SQLite state tracking and catalog persistence
-├── master_discoveries.csv    # Pristine catalog of 30 vetted unlisted candidates with Gaia DR3 IDs and radii
-├── reverified_catalog_120.csv# Full 120-system audit trail documenting false-positive rejections
-├── requirements.txt          # Core dependencies (astropy, lightkurve, scipy, etc.)
-└── terraform/                # Infrastructure as Code for Google Cloud deployment
+├── main.py                    # CLI scanner (--summary, --count, target) & Cloud Run entrypoint
+├── visualizer.py              # Thread-safe 5-panel scientific diagnostic plotter
+├── downloader.py              # TESS Lightkurve downloader (SPOC, QLP, 20s fast-cadence)
+├── bls_engine.py              # Box Least Squares (BLS) transit detection engine
+├── variable_engine.py         # Lomb-Scargle periodic variability engine
+├── single_transit_engine.py   # Isolated dip single-transit detector
+├── microlensing_engine.py     # Paczyński microlensing search engine
+├── vetter.py                  # Physical orbit & duration constraints, centroid, and vetting tests
+├── catalog_checker.py         # SIMBAD, AAVSO VSX, and NASA Exoplanet Archive cross-matching
+├── notifier.py                # Telegram Bot alert dispatcher with async retries
+├── db.py                      # SQLite state tracking and catalog persistence
+├── master_discoveries.csv     # Master catalog of vetted candidates and benchmark controls with audit flags
+├── test_downloader_sorting.py # Regression tests for multi-sector timestamp sorting and deduplication
+├── test_pipeline_upgrades.py  # End-to-end integration and vetting simulation tests
+├── requirements.txt           # Core dependencies (astropy, lightkurve, scipy, etc.)
+└── terraform/                 # Infrastructure as Code for Google Cloud deployment
 ```
 
 ---
 
 ## 🔭 Publishing Guidelines
 
-1. **VSX Submission:** The 12 unlisted eclipsing binaries and 9 unlisted high-amplitude variable stars are prepared for submission to the AAVSO International Variable Star Index (VSX).
+1. **VSX Submission:** The vetted unlisted eclipsing binaries and unlisted high-amplitude variable stars are prepared for submission to the AAVSO International Variable Star Index (VSX).
 2. **ExoFOP & Background Checks:** Always check the TESS pixel aperture for nearby eclipsing binaries (NEBs) using ExoFOP before claiming shallow planetary events.
 3. **Ground Follow-up:** High-priority bright systems ($V < 10$) provide prime targets for ground-based photometric and radial velocity follow-up.
