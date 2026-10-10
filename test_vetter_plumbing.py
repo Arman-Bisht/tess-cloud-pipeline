@@ -255,6 +255,40 @@ def test_difference_image_separation_sweep_and_missing_wcs():
         
     print("  -> Passed: Separation sweep (0.5..3.0 px) & missing-WCS NOT_RUN guard verified.")
 
+def test_shared_production_detrender_and_tpf_sector_guard():
+    print("Running Test 10: Shared production detrender & single-transit TPF sector coverage guard...")
+    from downloader import detrend_lightcurve_production
+    import lightkurve as lk
+    from unittest.mock import patch, MagicMock
+    from vetter import check_tpf_centroid_motion
+
+    # 1. Verify detrend_lightcurve_production returns (lc_flat, lc_wide_flat)
+    np.random.seed(999)
+    t = np.linspace(0, 10.0, 2000)
+    flux = 1.0 + 0.002 * np.sin(2 * np.pi * t / 3.0) + np.random.normal(0, 0.0004, size=len(t))
+    # Inject a 0.5% transit
+    in_dip = np.abs((t - 1.5) % 2.5) < 0.04
+    flux[in_dip] -= 0.005
+    lc_raw = lk.LightCurve(time=t, flux=flux)
+    lc_flat, lc_wide = detrend_lightcurve_production(lc_raw)
+    assert len(lc_flat) == len(lc_raw), "lc_flat should have same length as input"
+    assert len(lc_wide) == len(lc_raw), "lc_wide should have same length as input"
+    # Rotation should be attenuated in lc_flat while transit dip remains
+    assert np.nanstd(lc_flat.flux.value[~in_dip]) < np.nanstd(lc_raw.flux.value[~in_dip]), "Detrender must attenuate stellar rotation"
+    assert np.nanmedian(lc_flat.flux.value[in_dip]) < 0.997, "Detrender must preserve short transit dip"
+
+    # 2. Verify check_tpf_centroid_motion returns NOT_RUN when single-transit epoch falls outside TPF sector
+    mock_tpf = MagicMock()
+    mock_tpf.time.value = np.linspace(1354.0, 1381.0, 100)  # Sector 2
+    mock_tpf.flux.value = np.ones((100, 11, 11))
+    with patch("vetter._download_best_tpf", return_value=mock_tpf):
+        st, off, msg = check_tpf_centroid_motion("TIC 999999", 1395.5, 0.1, period=None)
+        assert st == "NOT_RUN", f"Expected NOT_RUN when single-transit epoch is outside TPF sector, got {st}"
+        assert np.isnan(off), f"Expected NaN offset for out-of-sector single transit, got {off}"
+        assert "outside available TPF sector" in msg, f"Expected sector coverage message, got: {msg}"
+
+    print("  -> Passed: Shared production detrender and single-transit out-of-sector TPF guard verified.")
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -265,4 +299,6 @@ if __name__ == "__main__":
     test_unmeasured_centroid_planet_classification()
     test_difference_image_centroid_benchmarks()
     test_difference_image_separation_sweep_and_missing_wcs()
-    print("\n=== ALL 9 PLUMBING, RETRY, CENTROID, SEPARATION SWEEP & VETTING TESTS PASSED! ===")
+    test_shared_production_detrender_and_tpf_sector_guard()
+    print("\n=== ALL 10 PLUMBING, RETRY, CENTROID, SEPARATION SWEEP, DETRENDER & VETTING TESTS PASSED! ===")
+

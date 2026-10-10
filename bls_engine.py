@@ -29,8 +29,8 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
             
         model = BoxLeastSquares(t, y, dy=dy)
         
-        # Create duration grid (e.g. 0.02 to 0.25 days, which is ~30 mins to 6 hours)
-        durations = np.linspace(0.02, 0.25, 20)
+        # Create duration grid (0.02 to 0.25 days, ~30 mins to 6 hours)
+        durations = np.linspace(0.02, 0.25, 12)
         min_duration = 0.02
         
         # Determine effective contiguous baseline to prevent multi-year gap explosion
@@ -52,9 +52,9 @@ def run_bls(lc: lk.LightCurve) -> Optional[Dict[str, Any]]:
         max_freq = 1.0 / min_p
         nf = int(np.round((max_freq - min_freq) / df)) + 1
         
-        # Cap initial coarse grid to at most 30,000 trial periods (uniform in frequency)
-        # to ensure fast sub-5s execution across any multi-sector/multi-year baseline
-        MAX_BLS_GRID = 30000
+        # Cap initial coarse grid to 15,000 trial periods (uniform in frequency, >200x finer than 1/T)
+        # followed by 150-point fine peak zoom
+        MAX_BLS_GRID = 15000
         if nf > MAX_BLS_GRID:
             nf = MAX_BLS_GRID
         freqs = np.linspace(max_freq, min_freq, nf)

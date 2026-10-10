@@ -217,35 +217,77 @@ def compute_difference_image_centroid(flux: np.ndarray, in_tr: np.ndarray, out_t
     else:
         return "FAIL", round(offset_px, 2), f"FAIL: Significant difference image offset ({offset_px:.2f} px) - likely off-target blend"
 
+def _download_best_tpf(target: str, epoch: Optional[float] = None):
+    """
+    Downloads a TESS Target Pixel File (preferring 120s SPOC TPF, then any TESS TPF,
+    then a TESScut 11x11 FFI cutout). When epoch is specified, checks up to 4 sectors
+    to find the sector covering epoch.
+    """
+    is_tesscut = False
+    search = lk.search_targetpixelfile(target, author='SPOC')
+    if len(search) == 0:
+        search = lk.search_targetpixelfile(target, mission='TESS')
+    if len(search) > 0 and 'exptime' in search.table.colnames:
+        spoc_120 = search[search.table['exptime'] == 120]
+        if len(spoc_120) > 0:
+            search = spoc_120
+    if len(search) == 0:
+        search = lk.search_tesscut(target)
+        is_tesscut = True
+    if len(search) == 0:
+        return None
+
+    max_try = min(len(search), 4) if (epoch is not None and np.isfinite(epoch)) else 1
+    first_valid_tpf = None
+    for idx in range(max_try):
+        try:
+            tpf = search[idx].download(cutout_size=(11, 11)) if is_tesscut else search[idx].download()
+            if tpf is None:
+                continue
+            if first_valid_tpf is None:
+                first_valid_tpf = tpf
+            if epoch is not None and np.isfinite(epoch):
+                t_vals = tpf.time.value
+                t_vals = t_vals[np.isfinite(t_vals)]
+                if len(t_vals) > 0 and (t_vals[0] <= epoch <= t_vals[-1]):
+                    return tpf
+        except Exception:
+            continue
+    return first_valid_tpf
+
+
+def _extract_tpf_wcs_target_pos(tpf) -> Optional[Tuple[float, float]]:
+    if hasattr(tpf, 'wcs') and tpf.wcs is not None and hasattr(tpf, 'ra') and hasattr(tpf, 'dec'):
+        try:
+            from astropy.coordinates import SkyCoord
+            px, py = tpf.wcs.world_to_pixel(SkyCoord(tpf.ra, tpf.dec, unit='deg'))
+            if np.isfinite(px) and np.isfinite(py):
+                return (float(px), float(py))
+        except Exception:
+            pass
+    return None
+
+
 def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, period: Optional[float] = None) -> Tuple[str, float, str]:
     """
-    Downloads Target Pixel File (TPF) from MAST and calculates in-transit vs out-of-transit
-    difference image photocenter offset.
+    Downloads Target Pixel File (TPF) or TESScut FFI cutout from MAST and calculates
+    in-transit vs out-of-transit difference image photocenter offset.
     Enables empirical verification for targets with unmeasured QLP lightcurve moments.
     """
     try:
         if not target or str(target).strip() in ["", "None", "N/A", "--"]:
             return "NOT_RUN", np.nan, "NOT_RUN (No target ID for TPF query)"
-        search = lk.search_targetpixelfile(target, author='SPOC')
-        if len(search) == 0:
-            search = lk.search_targetpixelfile(target, mission='TESS')
-        if len(search) == 0:
-            return "NOT_RUN", np.nan, "NOT_RUN (No TPF available in MAST archive)"
-            
-        if 'exptime' in search.table.colnames:
-            spoc_120 = search[search.table['exptime'] == 120]
-            if len(spoc_120) > 0:
-                search = spoc_120
-                
-        tpf = search[0].download()
+        if epoch is None or not np.isfinite(epoch):
+            return "NOT_RUN", np.nan, "NOT_RUN (Missing valid transit epoch for TPF query)"
+        tpf = _download_best_tpf(target, epoch=epoch)
         if tpf is None:
-            return "NOT_RUN", np.nan, "NOT_RUN (TPF download returned None)"
+            return "NOT_RUN", np.nan, "NOT_RUN (No TPF available in MAST archive)"
             
         t = tpf.time.value
         flux = tpf.flux.value
         valid = np.isfinite(t) & np.all(np.isfinite(flux), axis=(1, 2))
         t, flux = t[valid], flux[valid]
-        if len(t) < 50:
+        if len(t) < 30:
             return "NOT_RUN", np.nan, "NOT_RUN (Insufficient valid cadences in TPF)"
             
         if period and period > 0:
@@ -253,6 +295,8 @@ def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, p
             in_tr = np.abs(phase) < (duration_days / (2.0 * period))
             out_tr = (np.abs(phase) >= (duration_days / (2.0 * period))) & (np.abs(phase) < 3.0 * (duration_days / (2.0 * period)))
         else:
+            if epoch < t[0] or epoch > t[-1]:
+                return "NOT_RUN", np.nan, "NOT_RUN (Single-transit epoch outside available TPF sector coverage)"
             in_tr = np.abs(t - epoch) < (0.5 * duration_days)
             out_tr = (np.abs(t - epoch) >= (0.5 * duration_days)) & (np.abs(t - epoch) < 2.5 * duration_days)
             
@@ -261,51 +305,53 @@ def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, p
         if n_in < 3 or n_out < 5:
             return "NOT_RUN", np.nan, f"NOT_RUN (Insufficient in/out TPF cadences: {n_in}/{n_out})"
             
-        target_pos = None
-        if hasattr(tpf, 'wcs') and tpf.wcs is not None and hasattr(tpf, 'ra') and hasattr(tpf, 'dec'):
-            try:
-                from astropy.coordinates import SkyCoord
-                px, py = tpf.wcs.world_to_pixel(SkyCoord(tpf.ra, tpf.dec, unit='deg'))
-                if np.isfinite(px) and np.isfinite(py):
-                    target_pos = (float(px), float(py))
-            except Exception:
-                pass
-                
+        target_pos = _extract_tpf_wcs_target_pos(tpf)
         return compute_difference_image_centroid(flux, in_tr, out_tr, target_pos)
     except Exception as e:
         return "NOT_RUN", np.nan, f"NOT_RUN (TPF error: {e})"
 
 def check_tpf_variable_centroid_motion(target: str, period: float, epoch: Optional[float] = None) -> Tuple[str, float, str]:
     """
-    Downloads TPF from MAST and tests peak-phase vs trough-phase difference image photocenter stability
-    for periodic variables without lightcurve centroid columns.
+    Downloads TPF or TESScut FFI cutout from MAST and tests peak-phase vs trough-phase
+    difference image photocenter stability for periodic variables without lightcurve centroid columns.
     """
     try:
         if not target or str(target).strip() in ["", "None", "N/A", "--"]:
             return "NOT_RUN", np.nan, "NOT_RUN (No target ID for TPF query)"
-        search = lk.search_targetpixelfile(target, author='SPOC')
-        if len(search) == 0:
-            search = lk.search_targetpixelfile(target, mission='TESS')
-        if len(search) == 0:
-            return "NOT_RUN", np.nan, "NOT_RUN (No TPF available in MAST archive)"
-            
-        if 'exptime' in search.table.colnames:
-            spoc_120 = search[search.table['exptime'] == 120]
-            if len(spoc_120) > 0:
-                search = spoc_120
-                
-        tpf = search[0].download()
+        tpf = _download_best_tpf(target, epoch=epoch)
         if tpf is None:
-            return "NOT_RUN", np.nan, "NOT_RUN (TPF download returned None)"
+            return "NOT_RUN", np.nan, "NOT_RUN (No TPF available in MAST archive)"
             
         t = tpf.time.value
         flux = tpf.flux.value
         valid = np.isfinite(t) & np.all(np.isfinite(flux), axis=(1, 2))
         t, flux = t[valid], flux[valid]
-        if len(t) < 50:
+        if len(t) < 30:
             return "NOT_RUN", np.nan, "NOT_RUN (Insufficient valid cadences in TPF)"
             
-        t0 = epoch if epoch is not None else float(t[0])
+        target_pos = _extract_tpf_wcs_target_pos(tpf)
+        if target_pos is None:
+            return "NOT_RUN", np.nan, "NOT_RUN (Missing valid WCS target coordinates)"
+
+        # If epoch is not provided, align t0 to the phase of maximum target aperture flux
+        if epoch is not None and np.isfinite(epoch):
+            t0 = float(epoch)
+        else:
+            cy, cx = int(round(target_pos[1])), int(round(target_pos[0]))
+            y0, y1 = max(0, cy - 1), min(flux.shape[1], cy + 2)
+            x0, x1 = max(0, cx - 1), min(flux.shape[2], cx + 2)
+            ap_flux = np.nansum(flux[:, y0:y1, x0:x1], axis=(1, 2))
+            t_ref = float(t[0])
+            ph_raw = ((t - t_ref) % period) / period
+            bins = np.linspace(0.0, 1.0, 21)
+            bin_meds = [
+                float(np.nanmedian(ap_flux[(ph_raw >= bins[i]) & (ph_raw < bins[i + 1])]))
+                if np.any((ph_raw >= bins[i]) & (ph_raw < bins[i + 1])) else -np.inf
+                for i in range(20)
+            ]
+            best_bin = int(np.argmax(bin_meds))
+            t0 = t_ref + 0.5 * (bins[best_bin] + bins[best_bin + 1]) * period
+
         phase = ((t - t0 + 0.5 * period) % period) / period - 0.5
         
         peak_mask = np.abs(phase) < 0.2
@@ -313,7 +359,7 @@ def check_tpf_variable_centroid_motion(target: str, period: float, epoch: Option
         
         n_peak = int(np.sum(peak_mask))
         n_trough = int(np.sum(trough_mask))
-        if n_peak < 10 or n_trough < 10:
+        if n_peak < 5 or n_trough < 5:
             return "NOT_RUN", np.nan, "NOT_RUN (Insufficient phase cadences in TPF)"
             
         # Variable Difference Image (Peak - Trough amplitude envelope)
@@ -332,19 +378,6 @@ def check_tpf_variable_centroid_motion(target: str, period: float, epoch: Option
         y_grid, x_grid = np.mgrid[:diff.shape[0], :diff.shape[1]]
         x_diff = float(np.sum(diff_thresh * x_grid) / np.sum(diff_thresh))
         y_diff = float(np.sum(diff_thresh * y_grid) / np.sum(diff_thresh))
-        
-        target_pos = None
-        if hasattr(tpf, 'wcs') and tpf.wcs is not None and hasattr(tpf, 'ra') and hasattr(tpf, 'dec'):
-            try:
-                from astropy.coordinates import SkyCoord
-                px, py = tpf.wcs.world_to_pixel(SkyCoord(tpf.ra, tpf.dec, unit='deg'))
-                if np.isfinite(px) and np.isfinite(py):
-                    target_pos = (float(px), float(py))
-            except Exception:
-                pass
-                
-        if target_pos is None:
-            return "NOT_RUN", np.nan, "NOT_RUN (Missing valid WCS target coordinates)"
             
         offset_px = float(np.sqrt((x_diff - target_pos[0])**2 + (y_diff - target_pos[1])**2))
         

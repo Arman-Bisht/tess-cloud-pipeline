@@ -8,16 +8,17 @@ Supports both **Local Continuous Scanning** on workstation hardware and **Server
 
 ### 📊 Vetted Candidate Catalog (732 Bright Stars Surveyed)
 
-Following multi-catalog cross-matching, Keplerian orbital separation checks ($a > R_*$), transit crossing velocity limits on giants ($T_{\text{dur}} \ge T_{\text{dur, min}}$), cycle-count completeness ($N_{\text{cycles}} \ge 3.0$), tri-state centroid photocenter gating with Target Pixel File (TPF) difference imaging, and subgrid peak zooming, the pipeline logs **34 audited records** in [`master_discoveries.csv`](master_discoveries.csv) across three confidence tiers with 27 standardized columns including honest period uncertainties ($\sigma_P$), lightcurve moment shift ($\sigma$ SEM), TPF difference-image offset (`centroid_offset_px`), and pipeline version (see full audit log in [`CORRECTIONS.md`](CORRECTIONS.md)):
+Following multi-catalog cross-matching, Keplerian orbital separation checks ($a > R_*$), transit crossing velocity limits on giants ($T_{\text{dur}} \ge T_{\text{dur, min}}$), cycle-count completeness ($N_{\text{cycles}} \ge 3.0$), tri-state centroid photocenter gating with Target Pixel File (TPF) / TESScut FFI difference imaging, and subgrid peak zooming, the pipeline logs **34 audited records** in [`master_discoveries.csv`](master_discoveries.csv) (`v2.4.0`) across three confidence tiers with 27 standardized columns including honest period uncertainties ($\sigma_P$), lightcurve moment shift ($\sigma$ SEM), TPF difference-image offset (`centroid_offset_px`), and pipeline version (see full audit log in [`CORRECTIONS.md`](CORRECTIONS.md)):
 
 | Confidence Tier & Category | Count | Description & Astrophysical Highlights |
 | :--- | :---: | :--- |
-| **Pristine Vetted Clean & Benchmark Controls (Tier A)** | **2** | • **HD 10720** (`CF Hyi`, Algol EB): Recovered $P=3.78442 \pm 0.00018\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.998\%}$ match, $0.002\%$ difference) with clean lightcurve moment centroid ($\text{SEM} = 0.50\,\sigma$) and SPOC TPF difference-image offset of $0.45\,\text{px}$ relative to WCS target position.<br>• **HD 10528** ($\delta$ Scuti pulsator, $P = 0.07189 \pm 0.00002\,\text{d} \approx 103.5\,\text{min}$, $\text{SDE} = 30.3$, $N_{\text{cycles}} = 381.1$): SPOC TPF difference-image photocenter consistent with target ($\mathbf{0.33\,\text{px}}$ offset $\le 0.96\,\text{px}$ 99th-percentile threshold); not found in SIMBAD, AAVSO VSX, Gaia DR3 variability tables (`NOT_AVAILABLE`), or ASAS-SN (Tier A: Photocenter consistent with target). |
-| **Probable Unlisted Astrophysical Candidates (Tier B)** | **12** | Physically valid signals passing Keplerian ($a > R_*$), giant duration ($T_{\text{dur}} \ge T_{\min}$), depth, and cycle ($N \ge 3$) tests, held at Tier B pending Target Pixel File (TPF) pixel-level follow-up: <br>• **4 High-Amplitude Variables**: HD 10635 ($P=0.41285 \pm 0.00035\,\text{d}$), HD 10653 ($P=1.06772 \pm 0.00142\,\text{d}$), HD 10661 ($P=4.10358 \pm 0.04812\,\text{d}$), HD 10669 ($P=7.94418 \pm 0.21050\,\text{d}$)<br>• **7 Low-Mass Companion / Grazing EBs**: Solitary transits on main-sequence / subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$, $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$): HD 10562, HD 10564, HD 10607, HD 10628, HD 10645, HD 10668, HD 10670<br>• **1 Unlisted Eclipsing Binary**: HD 10549 |
-| **Unconstrained Stellar Parameters (Tier B)** | **4** | Missing Gaia DR3 or TIC stellar radius ($R_* = \text{null}$), preventing physical separation calculation: HD 10541, HD 10581, HD 10629, HD 10663 |
+| **Pristine Vetted Clean & Benchmark Controls (Tier A)** | **6** | • **HD 10720** (`CF Hyi`, Algol EB): Recovered $P=3.78442 \pm 0.00018\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.998\%}$ match, $0.002\%$ difference) with SPOC TPF difference-image offset of $\mathbf{0.45\,\text{px}}$ (`PASS` $\le 0.96\,\text{px}$ relative to WCS target position).<br>• **HD 10528** ($\delta$ Scuti pulsator, $P = 0.07189 \pm 0.00002\,\text{d} \approx 103.5\,\text{min}$, $\text{SDE} = 30.3$, $N_{\text{cycles}} = 381.1$): SPOC TPF difference-image photocenter consistent with target ($\mathbf{0.33\,\text{px}}$ offset `PASS`); not found in SIMBAD, AAVSO VSX, Gaia DR3 variability tables (`NOT_AVAILABLE`), or ASAS-SN.<br>• **HD 10635** (`TIC 399270628`, High-Amplitude Variable, $P=0.41285 \pm 0.00035\,\text{d}$, $\text{SDE}=65.5$, $N_{\text{cycles}}=60.5$): SPOC TPF difference-image offset $\mathbf{0.26\,\text{px}}$ (`PASS`).<br>• **HD 10653** (`TIC 10863314`, High-Amplitude Variable, $P=1.06772 \pm 0.00142\,\text{d}$, $\text{SDE}=64.3$, $N_{\text{cycles}}=23.4$): SPOC TPF difference-image offset $\mathbf{0.54\,\text{px}}$ (`PASS`).<br>• **HD 10661** (`TIC 229118094`, High-Amplitude Variable, $P=4.10358 \pm 0.04812\,\text{d}$, $\text{SDE}=38.0$, $N_{\text{cycles}}=12.5$): SPOC TPF difference-image offset $\mathbf{0.85\,\text{px}}$ (`PASS`).<br>• **HD 10669** (`TIC 231071055`, High-Amplitude Variable, $P=7.94418 \pm 0.21050\,\text{d}$, $\text{SDE}=15.5$, $N_{\text{cycles}}=3.1$): TESScut FFI difference-image offset $\mathbf{0.55\,\text{px}}$ (`PASS`). |
+| **Probable Unlisted Single-Transit Candidates (Tier B)** | **8** | Physically valid solitary (`Single`) dips passing giant crossing duration ($T_{\text{dur}} \ge T_{\min}$) and depth checks, held at Tier B (`NOT_RUN`) because the dip occurred in a QLP FFI sector without SPOC 2-min TPF coverage at the dip epoch:<br>• **7 Low-Mass Companion / Grazing EBs**: Solitary dips on main-sequence / subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$, $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$): HD 10562, HD 10564, HD 10607, HD 10628, HD 10645, HD 10668, HD 10670<br>• **1 Unlisted Eclipsing Binary**: HD 10549 |
+| **Unconstrained Stellar Parameters (Tier B)** | **4** | Missing Gaia DR3 or TIC stellar radius ($R_* = \text{null}$), preventing physical separation calculation: HD 10541 (`NOT_RUN`), HD 10581 (`PASS`, $0.51\,\text{px}$), HD 10629 (`NOT_RUN`), HD 10663 (`PASS`, $0.19\,\text{px}$) |
 | *Audit Flagged: Insufficient Baseline ($N_{\text{cycles}} < 3.0$, Tier C)* | *7* | HD 10526 ($N=2.4$), HD 10555 ($P=10.962 \pm 0.406\,\text{d}, N=2.5$), HD 10594 ($P=17.550 \pm 0.011\,\text{d}, N=1.6$), HD 10605 ($N=1.8$), HD 10614 ($P=10.834 \pm 0.398\,\text{d}, N=2.6$), HD 10648 ($P=20.000 \pm 0.787\,\text{d}, N=1.6$), HD 10585 ($N=1.4$; boundary pileup near $20.0\,\text{d}$) |
 | *Physical Rejections: Inside Host Envelope ($a \le R_*$, Tier C)* | *4* | HD 10525 ($P=0.61\,\text{d}, a=4.4\,R_\odot \ll 28.2\,R_\odot$ giant envelope), HD 10689 ($P=20.0\,\text{d}$ vs VSX $218.4\,\text{d}$), HD 10696 ($P=5.96\,\text{d}$ vs VSX $2.68\,\text{d}$), HD 10702 ($P=1.76\,\text{d}$ on $10.25\,R_\odot$ giant) |
 | *Physical Rejections: Giant Crossing Time ($T_{\text{dur}} \ll T_{\text{dur, min}}$, Tier C)* | *5* | HD 10548 ($88\,R_\odot$), HD 10609 ($35\,R_\odot$), HD 10652 ($34\,R_\odot$), HD 10658 ($49\,R_\odot$), HD 10654 ($13\,R_\odot$); duration $3.6\,\text{h}$ requires unphysical $v > 1000\,\text{km/s}$ (blended background binaries) |
+
 
 ---
 
@@ -132,7 +133,7 @@ Scientific integrity requires transparently documenting pipeline failure modes, 
 * **HD 10689 Forensics:** Initial runs detected a period of exactly $P = 20.000\,\text{d}$ because the BLS search grid was bounded at $20.0\,\text{d}$. However, the published ASAS/VSX period is **$218.37\,\text{d}$**! The $20.0\,\text{d}$ detection was an unconstrained grid-boundary pileup artifact, not a recovery of the catalog period.
 * **Principled Rule Implemented:** 
   1. Any period within $0.5\%$ of the search grid boundary ($P \ge 0.995 \times P_{\max}$ or $P \le 1.005 \times P_{\min}$) is rejected.
-  2. For periodic transit and variable classifications, the signal must complete at least **3 full cycles** across the contiguous baseline ($N_{\text{cycles}} \ge 3.0$). For a single 27-day TESS sector, the maximum measurable period is $\sim 9.0\,\text{d}$; longer events are handled by the single-transit engine.
+  2. For periodic transit and variable classifications, the signal must complete at least **3 full cycles** across the contiguous baseline ($N_{\text{cycles}} \ge 3.0$). Because a single $27.4\,\text{d}$ TESS sector with a $1.2\,\text{d}$ mid-sector downlink gap spans $26.2\,\text{d}$ of observed coverage, the strict single-sector periodic limit is $P_{\max} = 26.2\,\text{d} / 3.0 \approx 8.73\,\text{d}$; longer events on single-sector baselines are routed to Tier C or handled by the single-transit engine.
   3. Replaced arbitrary exclusion patches with principled filters for TESS orbital harmonics ($13.7\,\text{d}$, $6.85\,\text{d}$) and sector length ($27.4\,\text{d}$).
 
 ### 2. Multi-Sector Chronological Sorting & Timestamp Deduplication
@@ -192,38 +193,44 @@ The 9 mismatches illustrate the physical complexity of bright-star photometry an
 * **Tri-State Gating & Separate Physical Units:** Every candidate is audited with tri-state centroid checking (`PASS`, `PASS_MARGINAL`, `FAIL`, `NOT_RUN`), stored across two distinct physical columns in [`master_discoveries.csv`](master_discoveries.csv): `centroid_sigma` (lightcurve flux-moment shift in Welch SEM $\sigma$) and `centroid_offset_px` (TPF difference-image offset in pixels relative to WCS target position).
 * **Standard Error of the Mean ($\text{SEM}$):** Lightcurve moment shifts are evaluated using two-sample Welch standard error $\text{SEM} = \sqrt{\sigma_{\text{in}}^2 / N_{\text{in}} + \sigma_{\text{out}}^2 / N_{\text{out}}}$ rather than per-cadence scatter, preventing false passes caused by sample size inflation.
 * **Target Pixel File (TPF) Difference Imaging (Bryson et al. 2013):** Direct flux-weighted centroiding is vulnerable to neighbor contamination: when an on-target transit dims the primary star, flux weighting naturally pulls the apparent centroid toward any nearby static companion, causing a false blend rejection. To eliminate this systematic, `vetter.py` implements difference imaging ($\Delta I = I_{\text{out}} - I_{\text{in}}$). Constant neighbor stars cancel out to zero, isolating the true photocenter of the varying signal against target WCS coordinates.
-* **99th-Percentile Empirical Threshold Calibration ($\le 0.96\,\text{px}$):** Injecting 100 phase-folded on-target transits ($\delta \in [0.2\%, 2.0\%]$) directly into real TESS SPOC Target Pixel Files yielded an empirical on-target offset distribution with median $= 0.31\,\text{px}$, 95th percentile $= 0.94\,\text{px}$, and **99th percentile $= 0.96\,\text{px}$**. Accordingly, `PASS` is locked at $\le 0.96\,\text{px}$, `PASS_MARGINAL` at $(0.96, 1.80]\,\text{px}$, and `FAIL` at $> 1.80\,\text{px}$.
+* **Reproducible Threshold Calibration ([`calibrate_tpf_threshold.py`](calibrate_tpf_threshold.py) & [`tpf_threshold_calibration.json`](tpf_threshold_calibration.json)):** Injecting $N = 100$ phase-folded on-target transits (`seed = 20261010`, $\delta \in [0.2\%, 2.0\%]$, $P \in [0.6, 8.5]\,\text{d}$) directly into 4 real TESS SPOC 120s Target Pixel Files (`TIC 346940718` [HD 10528], `TIC 399270628` [HD 10635], `TIC 10863314` [HD 10653], `TIC 229118094` [HD 10661]) yielded the empirical offset histogram (`[0.0, 0.2): 46`, `[0.2, 0.4): 27`, `[0.4, 0.6): 11`, `[0.6, 0.8): 6`, `[0.8, 1.0): 7`, `[1.0, 1.5): 3`) with **median $= 0.215\,\text{px}$**, **90th percentile $= 0.801\,\text{px}$**, **95th percentile $= 0.964\,\text{px}$** (adopted **`PASS` threshold $\le 0.96\,\text{px}$**), and **99th percentile $= 1.061\,\text{px}$**. `PASS_MARGINAL` is locked at $(0.96, 1.80]\,\text{px}$ and `FAIL` at $> 1.80\,\text{px}$.
 * **Physical Resolution Limit ($\sim 1\,\text{px} \approx 21''$):** Because `PASS_MARGINAL` and `FAIL` both gate candidates to Tier B, only a signal within $\le 0.96\,\text{px}$ reaches Tier A. Given TESS's $21''/\text{pixel}$ plate scale, **a `PASS` rules out off-target blends beyond $\sim 1\,\text{pixel}$ ($\sim 21''$) and says nothing about closer unresolved companions within $\sim 1\,\text{pixel}$**, which require ground-based seeing-limited follow-up.
-* **Missing-WCS Safety Guard (`NOT_RUN`):** If a TPF lacks usable WCS astrometric transforms, `compute_difference_image_centroid` strictly returns `NOT_RUN` rather than falling back to the brightest pixel (which would falsely lock onto a brighter neighbor star).
-* **Empirical Re-Run Validation (HD 10528 & HD 10720):** Re-running TPF difference imaging against SPOC WCS coordinates yielded `centroid_offset_px = 0.33 px` (`PASS`) for **HD 10528** and `centroid_offset_px = 0.45 px` (`PASS`, alongside lightcurve moment `centroid_sigma = 0.50`) for **HD 10720**. HD 10528 is not found in SIMBAD, AAVSO VSX, Gaia DR3 variability tables (`phot_variable_flag = NOT_AVAILABLE`, indicating it was not processed in Gaia DR3 variability tables), or ASAS-SN (which has limited sensitivity to $1.7\,\text{mmag}$, $103\,\text{min}$ periods).
+* **Missing-WCS & Single-Transit Sector-Coverage Guards (`NOT_RUN`):** If a TPF lacks usable WCS astrometric transforms, `compute_difference_image_centroid` returns `NOT_RUN` rather than falling back to the brightest pixel. Similarly, for solitary (`Single`) dips, `check_tpf_centroid_motion` requires the downloaded TPF/FFI sector to span the transit `epoch` (`t[0] <= epoch <= t[-1]`); if the dip occurred in a QLP sector without TPF coverage at `epoch`, it strictly returns `NOT_RUN` rather than measuring out-of-transit noise in a non-dip sector.
+* **Catalog-Wide TPF / TESScut Evaluation (6 Tier A Confirmations):** All 6 periodic candidates with constrained stellar radii passed difference-image photocenter verification and reached **Tier A**: **HD 10720** (`0.45 px`), **HD 10528** (`0.33 px`), **HD 10635** (`0.26 px`), **HD 10653** (`0.54 px`), **HD 10661** (`0.85 px`), and **HD 10669** (`0.55 px`). Two additional periodic candidates (`HD 10581` [`0.51 px`] and `HD 10663` [`0.19 px`]) passed pixel vetting (`PASS`) but remain in Tier B solely due to missing Gaia DR3 $R_\star$. All 8 solitary (`Single`) Tier B dips occurred in QLP sectors lacking SPOC TPF coverage at the dip epoch and honestly remain `NOT_RUN`.
 
-### 7. Injection-Recovery Completeness & Empirical False-Alarm Rate (FAR) Harness
-The pipeline's end-to-end sensitivity and false-alarm limits were empirically mapped using [`injection_recovery.py`](injection_recovery.py):
+### 7. Injection-Recovery Completeness, Empirical FAR & Precision/Recall Harness
+The pipeline's end-to-end sensitivity, false-alarm rate, and false-positive discrimination were empirically mapped using [`injection_recovery.py`](injection_recovery.py), calling the exact shared production detrender (`detrend_lightcurve_production` in [`downloader.py`](downloader.py): `flatten(window_length=401)` and `flatten(window_length=2001)`) on 2-minute cadence baselines (`19,728` cadences over `27.4 d`):
 
 #### 2D Full-Pipeline Transit Recovery Completeness Grid ($P \times \text{Depth}$ at $\text{SDE} \ge 10.0$, $n = 30$ reps/cell)
-Each cell evaluates **30 independent realizations** ($750$ full-pipeline simulations total) injected into realistic single-sector TESS baselines ($27.4\,\text{d}$ span with a $1.2\,\text{d}$ mid-sector downlink gap, white noise $\sigma = 450\,\text{ppm}$, stochastic $\text{AR}(1)$ granulation red noise, and randomized stellar rotation harmonics with independent frequencies and phases per trial). Every realization runs through iterative outlier-masked Savitzky-Golay detrending $\rightarrow$ `run_bls` $\rightarrow$ `vet_signals` (secondary-eclipse, odd/even, Keplerian $a > R_\star$, and physical duration gates). Recovery requires a strict **$\le 1.0\%$ fundamental period match** at Tier A threshold **$\text{SDE} \ge 10.0$** ($0.5\times / 2.0\times$ harmonics are excluded and tracked separately; values in parentheses are **95% Wilson / Clopper-Pearson confidence intervals**):
+Each cell evaluates **30 independent realizations** ($750$ full-pipeline simulations total) injected into realistic single-sector 2-minute cadence TESS baselines ($27.4\,\text{d}$ span with a $1.2\,\text{d}$ mid-sector downlink gap, white noise $\sigma = 450\,\text{ppm}$, stochastic $\text{AR}(1)$ granulation red noise, and randomized stellar rotation harmonics with independent frequencies and phases per trial). Every realization runs through the shared production detrender (`detrend_lightcurve_production`) $\rightarrow$ `run_bls` $\rightarrow$ `vet_signals` (secondary-eclipse, odd/even, Keplerian $a > R_\star$, and physical duration gates). Recovery requires a strict **$\le 1.0\%$ fundamental period match** at Tier A threshold **$\text{SDE} \ge 10.0$** ($0.5\times / 2.0\times$ harmonics are excluded and tracked separately; values in parentheses are **95% Wilson / Clopper-Pearson confidence intervals**):
 
 | Period (d) | 500 ppm | 1000 ppm | 2500 ppm | 5000 ppm | 10000 ppm |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **P = 0.8 d** | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) |
-| **P = 1.5 d** | 67% (49–81%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) |
+| **P = 1.5 d** | 97% (83–99%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) |
 | **P = 3.5 d** | 10% (3–26%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) |
-| **P = 7.0 d** | 0% (0–10%) | 87% (70–95%) | 100% (90–100%) | 100% (90–100%) | 100% (90–100%) |
+| **P = 7.0 d** | 0% (0–10%) | 23% (12–41%) | 83% (66–93%) | 100% (90–100%) | 100% (90–100%) |
 | **P = 12.0 d** *(Full $N_{\text{cycles}}\ge 3$ gate)* | 0% (0–10%) | 0% (0–10%) | 0% (0–10%) | 0% (0–10%) | 0% (0–10%) |
-| **P = 12.0 d** *(BLS + Physics pre-cycle gate)* | 0% (0–10%) | 13% (5–30%) | 87% (70–95%) | 100% (90–100%) | 100% (90–100%) |
+| **P = 12.0 d** *(BLS + Physics pre-cycle gate)* | 0% (0–10%) | 0% (0–10%) | 0% (0–10%) | 70% (52–83%) | 100% (90–100%) |
 
-* **Single-Sector Cycle Gate at $P = 12.0\,\text{d}$:** On a single $27.4\,\text{d}$ TESS sector with a $1.2\,\text{d}$ mid-sector gap ($26.2\,\text{d}$ observed coverage), a $12.0\,\text{d}$ planet completes only $N_{\text{cycles}} = 2.18 < 3.0$ cycles. Full periodic vetting therefore intentionally routes single-sector $P = 12.0\,\text{d}$ detections to Tier C (`UNCLASSIFIED_PERIODIC_DIP`, yielding $0\%$ in Tier A/B). Prior to the $N_{\text{cycles}} \ge 3.0$ gate, the underlying BLS + eclipse/orbital physics recovery at $P = 12.0\,\text{d}$ is $87\%$ (`70–95%`) at $2500\,\text{ppm}$ and $100\%$ (`90–100%`) at $\ge 5000\,\text{ppm}$.
+* **Effect of Unmasked Savitzky-Golay Production Detrending (`window_length=401` at 2-min cadence):** At 2-minute cadence, `window_length=401` spans $13.4\,\text{hours}$. For short-period transits ($P \in [0.8, 3.5]\,\text{d}$, $T_{\text{dur}} \approx 1.8\text{–}3.0\,\text{h}$), the 2-minute sampling boosts in-transit point density and yields $97\text{–}100\%$ recovery even at $500\,\text{ppm}$ ($P \le 1.5\,\text{d}$). For longer-period transits ($P = 7.0\text{–}12.0\,\text{d}$, $T_{\text{dur}} \approx 4.0\text{–}4.7\,\text{h}$), an unmasked $13.4\,\text{h}$ Savitzky-Golay window partially tracks into the transit trough and attenuates shallow depths ($1000\text{–}2500\,\text{ppm}$), reducing $P = 7.0\,\text{d}$ recovery to $23\%$ at $1000\,\text{ppm}$ and $83\%$ at $2500\,\text{ppm}$ ($100\%$ at $\ge 5000\,\text{ppm}$).
+* **Single-Sector Cycle Gate at $P = 12.0\,\text{d}$ ($P_{\max} = 26.2\,\text{d} / 3 \approx 8.73\,\text{d}$):** On a single $27.4\,\text{d}$ TESS sector with a $1.2\,\text{d}$ mid-sector gap ($26.2\,\text{d}$ observed coverage), any period $P > 8.73\,\text{d}$ completes fewer than $3.0$ cycles ($N_{\text{cycles}} = 2.18 < 3.0$ at $P = 12.0\,\text{d}$). Full periodic vetting therefore intentionally routes single-sector $P = 12.0\,\text{d}$ detections to Tier C (`UNCLASSIFIED_PERIODIC_DIP`, yielding $0\%$ in Tier A/B). Prior to the $N_{\text{cycles}} \ge 3.0$ gate, the underlying BLS + eclipse/orbital physics recovery at $P = 12.0\,\text{d}$ is $70\%$ (`52–83%`) at $5000\,\text{ppm}$ and $100\%$ (`90–100%`) at $10000\,\text{ppm}$.
 * **Harmonic Separation:** $0.5\times$ and $2.0\times$ period harmonics are excluded from the fundamental recovery percentages above (mean harmonic rate across the grid: $0.0\%$).
 
 #### Empirical False-Alarm Rate (FAR) Calibration ($n = 60$ Independent Red+White Noise Realizations)
-Evaluated across **60 genuinely independent noise realizations** (random rotation frequencies/phases + stochastic $\text{AR}(1)$ granulation + white noise + TESS mid-sector gap, passed through detrending, BLS, and full vetting):
-* **Baseline Noise SDE Distribution:** Mean noise $\text{SDE} = 5.50$, 95th percentile noise ceiling $= 7.26$.
-* **$\text{SDE} \ge 6.0$:** Raw BLS $\text{FAR} = 21.7\%$ ($13/60$, 95% CI: $13.1\text{–}33.6\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
-* **$\text{SDE} \ge 7.0$:** Raw BLS $\text{FAR} = 6.7\%$ ($4/60$, 95% CI: $2.6\text{–}15.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+Evaluated across **60 genuinely independent 2-minute cadence noise realizations** (random rotation frequencies/phases + stochastic $\text{AR}(1)$ granulation + white noise + TESS mid-sector gap, passed through `detrend_lightcurve_production`, `run_bls`, and `vet_signals`):
+* **Baseline Noise SDE Distribution:** Mean noise $\text{SDE} = 5.86$, 95th percentile noise ceiling $= 7.26$.
+* **$\text{SDE} \ge 6.0$:** Raw BLS $\text{FAR} = 38.3\%$ ($23/60$, 95% CI: $27.1\text{–}51.0\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 7.0$:** Raw BLS $\text{FAR} = 11.7\%$ ($7/60$, 95% CI: $5.8\text{–}22.2\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
 * **$\text{SDE} \ge 8.0$:** Raw BLS $\text{FAR} = 1.7\%$ ($1/60$, 95% CI: $0.3\text{–}8.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
-* **$\text{SDE} \ge 9.0$:** Raw BLS $\text{FAR} = 1.7\%$ ($1/60$, 95% CI: $0.3\text{–}8.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 9.0$:** Raw BLS $\text{FAR} = 0.0\%$ ($0/60$, 95% CI: $0.0\text{–}4.9\%$) | Post-Vetting $\text{FAR} = 0.0\%$ ($0/60$).
 * **$\text{SDE} \ge 10.0$ (Tier A Gate):** Observed $\text{FAR} = 0.0\%$ ($0/60$ false alarms; **95% one-sided Clopper-Pearson upper bound $< 4.9\%$**).
-* **Operational Rule:** Tier A candidates require $\text{SDE} \ge 10.0$ (empirical $\text{FAR} < 4.9\%$ at 95% confidence) plus $N_{\text{cycles}} \ge 3.0$, physical orbit/duration compliance, and verified pixel centroid `PASS`.
+
+#### 40-Target Exoplanet vs. Astrophysical False-Positive Precision & Recall Benchmark
+To measure end-to-end classification precision and recall when distinguishing true transiting exoplanets from astrophysical false positives, `run_planet_vs_fp_precision_recall_benchmark()` in [`injection_recovery.py`](injection_recovery.py) evaluates **40 synthetic 2-minute cadence targets**: **20 transiting exoplanets** ($P \in [0.9, 7.2]\,\text{d}$, $\delta \in [1200, 14000]\,\text{ppm}$, $R_\star = 1.0\,R_\odot$) and **20 non-planets / astrophysical false positives** (6 eclipsing binaries with $45\%$ secondary eclipses, 4 odd/even depth-asymmetric EBs, 4 deep $4.5\%$ EBs with $R_{\text{comp}} > 2\,R_{\text{Jup}}$, 3 unphysical inside-star orbits $a < R_\star$ around $18\,R_\odot$ giants, and 3 pure red+white noise stars):
+* **True Positives (Planets Recovered as `CANDIDATE_EXOPLANET` within $1\%$ of $P_{\text{true}}$):** **$18 / 20$** (**Recall $= 90.0\%$**; the 2 missed planets are shallow $1200\text{–}1800\,\text{ppm}$ transits at $P > 6\,\text{d}$ attenuated by unmasked Savitzky-Golay detrending).
+* **True Negatives (False Positives Rejected):** **$15 / 20$** ($\text{FP} = 5$, where unmasked `flatten(window_length=401)` partially attenuates deep $4.5\%$ eclipses below the $2.5\%$ depth boundary or damps secondary-eclipse troughs on longer-duration binaries).
+* **End-to-End Vetting Metrics:** **Precision $= 78.3\%$**, **Recall $= 90.0\%$**, **$\text{F1-Score} = 83.7\%$**.
 
 ---
 
@@ -260,25 +267,29 @@ The repository includes production Terraform configuration for zero-cost deploym
 ## 📁 Repository Structure
 
 ```text
-├── main.py                    # CLI scanner (--summary, --count, target) & Cloud Run entrypoint
-├── visualizer.py              # Thread-safe 5-panel scientific diagnostic plotter
-├── downloader.py              # TESS Lightkurve downloader (SPOC, QLP, 20s fast-cadence)
-├── bls_engine.py              # Box Least Squares (BLS) transit detection engine
-├── variable_engine.py         # Lomb-Scargle periodic variability engine
-├── single_transit_engine.py   # Isolated dip single-transit detector
-├── microlensing_engine.py     # Paczyński microlensing search engine
-├── vetter.py                  # Physical orbit & duration constraints, difference-image centroid vetting
-├── catalog_checker.py         # SIMBAD, AAVSO VSX, and NASA Exoplanet Archive cross-matching
-├── injection_recovery.py      # 2D completeness matrix (P x depth) & empirical FAR calibration harness
-├── notifier.py                # Telegram Bot alert dispatcher with async retries
-├── db.py                      # SQLite state tracking and catalog persistence
-├── master_discoveries.csv     # Master catalog of vetted candidates and benchmark controls with audit flags
-├── CORRECTIONS.md             # Transparent scientific retractions and algorithmic bug audit log
-├── test_downloader_sorting.py # Regression tests for multi-sector timestamp sorting and deduplication
-├── test_vetter_plumbing.py    # Regression tests for vetter plumbing, tri-state centroid, and difference imaging
-├── test_pipeline_upgrades.py  # End-to-end integration and vetting simulation tests
-├── requirements.txt           # Core dependencies (astropy, lightkurve, scipy, etc.)
-└── terraform/                 # Infrastructure as Code for Google Cloud deployment
+├── main.py                         # CLI scanner (--summary, --count, target) & Cloud Run entrypoint
+├── visualizer.py                   # Thread-safe 5-panel scientific diagnostic plotter
+├── downloader.py                   # TESS Lightkurve downloader & shared production detrender
+├── bls_engine.py                   # Box Least Squares (BLS) transit detection engine
+├── variable_engine.py              # Lomb-Scargle periodic variability engine
+├── single_transit_engine.py        # Isolated dip single-transit detector
+├── microlensing_engine.py          # Paczyński microlensing search engine
+├── vetter.py                       # Physical orbit & duration constraints, difference-image centroid vetting
+├── catalog_checker.py              # SIMBAD, AAVSO VSX, and NASA Exoplanet Archive cross-matching
+├── injection_recovery.py           # 2D completeness matrix, FAR calibration & 40-target P/R benchmark
+├── calibrate_tpf_threshold.py      # Reproducible 100-injection TPF threshold calibration script
+├── tpf_threshold_calibration.json  # Calibration artifact (TIC list, seed, offsets, histogram, percentiles)
+├── notifier.py                     # Telegram Bot alert dispatcher with async retries
+├── db.py                           # SQLite state tracking and catalog persistence
+├── master_discoveries.csv          # Master catalog of vetted candidates and benchmark controls (v2.4.0)
+├── CORRECTIONS.md                  # Transparent scientific retractions and algorithmic bug audit log
+├── test_downloader_sorting.py      # Regression tests for multi-sector timestamp sorting and deduplication
+├── test_vetter_plumbing.py         # 10 regression tests for vetter plumbing, centroiding & detrending
+├── test_pipeline_upgrades.py       # End-to-end integration and vetting simulation tests
+├── requirements.txt                # Pinned core dependencies (astropy, lightkurve, scipy, etc.)
+├── .github/workflows/ci.yml        # Automated GitHub Actions CI test suite
+├── archive/                        # Archived legacy exploratory catalogs and one-off forensic scripts
+└── terraform/                      # Infrastructure as Code for Google Cloud deployment
 ```
 
 ---

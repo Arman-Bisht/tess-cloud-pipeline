@@ -1,0 +1,47 @@
+name: Astrohunter Pro CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Plumbing, Retry, Centroid & Separation Sweep Tests (9 tests)
+        run: python test_vetter_plumbing.py
+
+      - name: Run Downloader Chronological Sorting & Deduplication Regression Test
+        run: python test_downloader_sorting.py
+
+      - name: Run Offline TPF Difference-Image 99th-Percentile Calibration Verification
+        run: python calibrate_tpf_threshold.py --offline
+
+      - name: Verify Master Catalog Schema & Row Integrity
+        run: |
+          python -c "
+          import pandas as pd
+          df = pd.read_csv('master_discoveries.csv')
+          assert len(df) == 34, f'Expected 34 rows, got {len(df)}'
+          assert 'centroid_offset_px' in df.columns, 'Missing centroid_offset_px column'
+          assert (df['pipeline_version'] == 'v2.4.0').all(), 'All rows must carry v2.4.0'
+          print('Catalog integrity check passed: 34 rows, 27 columns, v2.4.0')
+          "

@@ -21,7 +21,7 @@ Performs rigorous empirical validation of the Astrohunter transit detection & ve
 
 import numpy as np
 import lightkurve as lk
-from scipy.signal import savgol_filter
+from scipy.signal import lfilter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Dict, Any, List, Tuple
 import time
@@ -31,6 +31,7 @@ import sys
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
+from downloader import detrend_lightcurve_production
 from bls_engine import run_bls
 from vetter import vet_signals, compute_difference_image_centroid, assign_tier
 
@@ -61,17 +62,17 @@ def wilson_ci_95(k: int, n: int) -> Tuple[float, float]:
 
 
 def generate_independent_tess_baseline(seed: int,
-                                       n_points: int = 2400,
+                                       n_points: int = 19728,
                                        baseline_days: float = 27.4,
-                                       white_noise_ppm: float = 450.0,
+                                       white_noise_ppm: float = 1150.0,
                                        red_noise_ppm: float = 350.0) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Generates an independent TESS single-sector baseline featuring:
+    Generates an independent TESS 2-minute cadence single-sector baseline (19,728 points over 27.4 d):
       1. Realistic TESS 1.2-day mid-sector perigee downlink gap (t in [13.1, 14.3] d)
-         plus random 1% cadence dropouts.
-      2. Independent white Gaussian photon noise.
-      3. Independent stochastic AR(1) red granulation noise (tau ~ 0.35 d).
-      4. Independent randomized stellar rotation harmonics (random periods in [2.5, 14.0] d,
+         plus random 1% quality-flag cadence dropouts (~18,675 valid 2-min cadences).
+      2. Independent white Gaussian photon noise (1150 ppm per 2-min cadence -> ~400 ppm per 16-min bin).
+      3. Independent stochastic AR(1) red granulation noise (tau ~ 2.2 hours, alpha=0.98 per 2-min step).
+      4. Independent randomized stellar rotation harmonics (random periods in [2.8, 15.0] d,
          random phases in [0, 2*pi], and random amplitudes) so no two realizations share frequencies.
     """
     rng = np.random.default_rng(seed)
@@ -85,16 +86,14 @@ def generate_independent_tess_baseline(seed: int,
     t = t_full[valid_mask]
     n_valid = len(t)
     
-    # 1. White photon noise
+    # 1. White photon noise (per 2-minute cadence)
     white_noise = rng.normal(0.0, white_noise_ppm * 1e-6, n_valid)
     
-    # 2. Stochastic AR(1) correlated pink/red noise (granulation timescale ~ 8 hours)
-    alpha = 0.85
-    ar_noise = np.zeros(n_valid)
+    # 2. Vectorized stochastic AR(1) correlated pink/red noise (granulation timescale ~ 2-3 hours)
+    alpha = 0.98
     innov_std = (red_noise_ppm * 0.6 * 1e-6) * np.sqrt(1.0 - alpha ** 2)
     innovations = rng.normal(0.0, innov_std, n_valid)
-    for i in range(1, n_valid):
-        ar_noise[i] = alpha * ar_noise[i - 1] + innovations[i]
+    ar_noise = lfilter([1.0], [1.0, -alpha], innovations)
         
     # 3. Randomized stellar rotational modulation (independent frequencies & phases per trial)
     p_rot1 = rng.uniform(2.8, 7.5)
@@ -111,39 +110,11 @@ def generate_independent_tess_baseline(seed: int,
 
 def detrend_lightcurve(t: np.ndarray, flux: np.ndarray) -> Tuple[lk.LightCurve, lk.LightCurve]:
     """
-    Applies the pipeline's iterative outlier-clipped Savitzky-Golay baseline detrending
-    across contiguous orbit segments (respecting the mid-sector downlink gap and masking
-    in-transit downward outliers so transits are not attenuated), matching downloader.py.
+    Calls the shared production detrender `downloader.detrend_lightcurve_production`
+    (`flatten(window_length=401)` on 2-minute cadence, ~13.4 hours) directly.
     """
     lc_unflat = lk.LightCurve(time=t, flux=flux)
-    flux_flat = np.ones_like(flux)
-    
-    # Split at mid-sector downlink gap (dt > 0.5 d) to prevent filter ringing at gap edges
-    dt = np.diff(t)
-    gap_idx = np.where(dt > 0.5)[0]
-    starts = np.insert(gap_idx + 1, 0, 0)
-    ends = np.append(gap_idx, len(t) - 1)
-    
-    for s_idx, e_idx in zip(starts, ends):
-        seg_t = t[s_idx:e_idx + 1]
-        seg_f = flux[s_idx:e_idx + 1].copy()
-        if len(seg_f) > 151:
-            # 2-pass iterative sigma-clipping of downward transit dips before Savitzky-Golay smoothing
-            work_f = seg_f.copy()
-            for _ in range(2):
-                trend = savgol_filter(work_f, window_length=151, polyorder=2)
-                resid = seg_f - trend
-                mad_std = 1.4826 * np.nanmedian(np.abs(resid - np.nanmedian(resid)))
-                outlier_mask = resid < (-2.5 * mad_std)
-                if np.any(outlier_mask) and np.sum(~outlier_mask) > 50:
-                    work_f = np.interp(seg_t, seg_t[~outlier_mask], seg_f[~outlier_mask])
-            trend = savgol_filter(work_f, window_length=151, polyorder=2)
-            trend = np.where(trend > 0, trend, 1.0)
-            flux_flat[s_idx:e_idx + 1] = seg_f / trend
-        else:
-            flux_flat[s_idx:e_idx + 1] = seg_f / np.nanmedian(seg_f)
-            
-    lc_flat = lk.LightCurve(time=t, flux=flux_flat)
+    lc_flat, _ = detrend_lightcurve_production(lc_unflat)
     return lc_flat, lc_unflat
 
 
@@ -440,7 +411,119 @@ def run_difference_image_pixel_benchmarks() -> Dict[str, Any]:
     return benchmarks
 
 
-def print_summary_report(grid_res: Dict[str, Any], far_res: Dict[str, Any], bench_res: Dict[str, Any]):
+def _evaluate_single_pr_benchmark_item(args: Tuple[int, str, float, float, float, float, float]) -> Tuple[str, str, bool]:
+    """
+    Evaluates one item from the 40-target Planet vs False-Positive Precision/Recall benchmark.
+    args = (seed, true_label, period_d, depth_ppm, sec_depth_ppm, odd_scale, r_star)
+    """
+    seed, true_label, p_d, depth_ppm, sec_ppm, odd_scale, r_star = args
+    t, flux_base = generate_independent_tess_baseline(seed=seed)
+    flux = flux_base.copy()
+    if depth_ppm > 0:
+        dur_d = min(0.24, max(0.06, 0.085 * (p_d ** (1.0 / 3.0))))
+        epoch = t[0] + 0.35 * p_d
+        cycle_num = np.round((t - epoch) / p_d)
+        phase = ((t - epoch + 0.5 * p_d) % p_d) / p_d - 0.5
+        in_pri = np.abs(phase) < (dur_d / (2.0 * p_d))
+        is_odd = (np.abs(cycle_num) % 2) == 1
+        flux[in_pri & is_odd] -= (depth_ppm * 1e-6) * odd_scale
+        flux[in_pri & (~is_odd)] -= (depth_ppm * 1e-6)
+        if sec_ppm > 0:
+            in_sec = np.abs(np.abs(phase) - 0.5) < (dur_d / (2.0 * p_d))
+            flux[in_sec] -= (sec_ppm * 1e-6)
+
+    lc_flat, lc_unflat = detrend_lightcurve(t, flux)
+    bls_res = run_bls(lc_flat)
+    cat, vres = vet_signals(
+        bls_res=bls_res,
+        ls_res=None,
+        single_res=None,
+        micro_res=None,
+        lc_flat=lc_flat,
+        lc_unflat=lc_unflat,
+        sectors=[1],
+        r_star=r_star,
+        m_star=1.0,
+        is_known=False,
+        target_name=None,
+    )
+    det_p = float(vres.get("period", 0.0)) if vres else 0.0
+    p_match = (abs(det_p - p_d) / p_d <= 0.010) if p_d > 0 else False
+    pred_planet = (cat == "CANDIDATE_EXOPLANET") and (p_match if true_label == "PLANET" else True)
+    return true_label, cat, pred_planet
+
+
+def run_planet_vs_fp_precision_recall_benchmark(max_workers: int = 8) -> Dict[str, Any]:
+    """
+    Evaluates a 40-target benchmark (20 transiting exoplanets + 20 astrophysical false positives:
+    secondary-eclipse EBs, odd/even EBs, deep >3% EBs, giant-star fast-dip blends, and inside-star orbits)
+    through the shared production detrender + BLS + vet_signals(), reporting Precision, Recall, and F1.
+    """
+    print("\n[4/4] Running 40-Target Planet vs False-Positive Precision & Recall Benchmark...", flush=True)
+    rng = np.random.default_rng(20261099)
+    bench_tasks = []
+
+    # 20 True Transiting Planets (P in [0.9, 7.2] d, depth in [1200, 14000] ppm, R* = 1.0 R_sun)
+    planet_periods = np.linspace(0.9, 7.2, 20)
+    planet_depths = np.linspace(1200.0, 14000.0, 20)
+    for i in range(20):
+        bench_tasks.append((80000 + i, "PLANET", float(planet_periods[i]), float(planet_depths[i]), 0.0, 1.0, 1.0))
+
+    # 20 Non-Planets / Astrophysical False Positives:
+    #  - 6 EBs with secondary eclipses (sec_depth = 45% of primary)
+    for i in range(6):
+        p = float(rng.uniform(1.2, 5.5))
+        bench_tasks.append((81000 + i, "FP_SEC_EB", p, 8000.0, 3600.0, 1.0, 1.0))
+    #  - 4 EBs with odd/even eclipse depth asymmetry (odd = 1.6x even)
+    for i in range(4):
+        p = float(rng.uniform(1.2, 5.0))
+        bench_tasks.append((82000 + i, "FP_ODDEVEN_EB", p, 6000.0, 0.0, 1.65, 1.0))
+    #  - 4 Deep eclipsing binaries (depth = 4.5% > 2.5% planet limit)
+    for i in range(4):
+        p = float(rng.uniform(1.1, 6.0))
+        bench_tasks.append((83000 + i, "FP_DEEP_EB", p, 45000.0, 0.0, 1.0, 1.0))
+    #  - 3 Inside-star unphysical orbits (P = 0.65 d around R* = 18 R_sun giant)
+    for i in range(3):
+        bench_tasks.append((84000 + i, "FP_INSIDE_STAR", 0.65, 5000.0, 0.0, 1.0, 18.0))
+    #  - 3 Pure red+white noise stars
+    for i in range(3):
+        bench_tasks.append((85000 + i, "FP_NOISE", 3.0, 0.0, 0.0, 1.0, 1.0))
+
+    tp = fp = fn = tn = 0
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_evaluate_single_pr_benchmark_item, t_arg) for t_arg in bench_tasks]
+        for f in as_completed(futures):
+            true_lbl, _, pred_pl = f.result()
+            if true_lbl == "PLANET":
+                if pred_pl:
+                    tp += 1
+                else:
+                    fn += 1
+            else:
+                if pred_pl:
+                    fp += 1
+                else:
+                    tn += 1
+
+    precision = (tp / (tp + fp) * 100.0) if (tp + fp) > 0 else 0.0
+    recall = (tp / (tp + fn) * 100.0) if (tp + fn) > 0 else 0.0
+    f1 = (2.0 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+    print(f"  -> TP={tp}/20 Planets, TN={tn}/20 False Positives, FP={fp}, FN={fn} "
+          f"| Precision={precision:.1f}%, Recall={recall:.1f}%, F1={f1:.1f}%", flush=True)
+    return {
+        "n_planets": 20,
+        "n_fps": 20,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "precision_pct": precision,
+        "recall_pct": recall,
+        "f1_pct": f1,
+    }
+
+
+def print_summary_report(grid_res: Dict[str, Any], far_res: Dict[str, Any], bench_res: Dict[str, Any], pr_res: Dict[str, Any] = None):
     print("\n" + "=" * 88)
     print("ASTROHUNTER PRO -- FULL-PIPELINE INJECTION-RECOVERY & STATISTICAL AUDIT REPORT")
     print("=" * 88)
@@ -476,8 +559,9 @@ def print_summary_report(grid_res: Dict[str, Any], far_res: Dict[str, Any], benc
                 pcells.append(f"{pv:>3.0f}% ({plo:>2.0f}-{phi:>3.0f}%)".rjust(15))
             print(f"  [BLS+Phys] " + "".join(pcells))
     print("-" * 88)
-    print("Note: On a single 27.4-day TESS sector (26.2 d observed coverage), P = 12.0 d has N_cycles = 2.18 < 3.0,")
-    print("      so full vetting routes it to Tier C (UNCLASSIFIED_PERIODIC_DIP, 0% Tier A/B). The [BLS+Phys] row")
+    print("Note: On a single 27.4-day TESS sector (26.2 d observed coverage), P = 12.0 d has N_cycles = 2.18 < 3.0")
+    print("      (single-sector coverage limit for N_cycles >= 3.0 is P <= 26.2 / 3 = 8.73 d), so full vetting")
+    print("      routes P = 12.0 d to Tier C (UNCLASSIFIED_PERIODIC_DIP, 0% Tier A/B). The [BLS+Phys] row")
     print("      shows the P = 12.0 d recovery rate passing BLS SDE >= 10.0 + all eclipse/orbital physics checks.")
     print(f"      Harmonic (0.5x/2.0x) recoveries are excluded above (mean harmonic rate: {np.mean(harm):.1f}%).")
 
@@ -496,6 +580,14 @@ def print_summary_report(grid_res: Dict[str, Any], far_res: Dict[str, Any], benc
         verdict = "PASS" if res['pass'] else "FAIL"
         off_str = f"{res['offset_px']:.2f} px" if not np.isnan(res['offset_px']) else "NaN"
         print(f"  • {case_name:<48}: {res['status']:<8} ({off_str}) -> [{verdict}]")
+    print("-" * 88)
+
+    if pr_res:
+        print("\n4. 40-TARGET EXOPLANET vs ASTROPHYSICAL FALSE-POSITIVE BENCHMARK (20 Planets + 20 FPs)")
+        print("-" * 88)
+        print(f"  • True Positives (Planets Recovered)   : {pr_res['tp']}/{pr_res['n_planets']}")
+        print(f"  • True Negatives (FPs Rejected)        : {pr_res['tn']}/{pr_res['n_fps']} (FP={pr_res['fp']})")
+        print(f"  • Precision = {pr_res['precision_pct']:.1f}% | Recall = {pr_res['recall_pct']:.1f}% | F1-Score = {pr_res['f1_pct']:.1f}%")
     print("=" * 88 + "\n", flush=True)
 
 
@@ -505,5 +597,6 @@ if __name__ == "__main__":
     grid_results = run_injection_recovery_grid(n_reps_per_cell=30, sde_threshold=10.0, max_workers=workers)
     far_results = run_false_alarm_rate_calibration(n_noise_realizations=60, max_workers=workers)
     bench_results = run_difference_image_pixel_benchmarks()
-    print_summary_report(grid_results, far_results, bench_results)
+    pr_results = run_planet_vs_fp_precision_recall_benchmark(max_workers=workers)
+    print_summary_report(grid_results, far_results, bench_results, pr_results)
     print(f"✨ Full harness completed in {time.time() - t0_all:.1f}s.", flush=True)

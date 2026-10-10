@@ -88,6 +88,36 @@ def _download_target_collection(target: str) -> Tuple[Optional[lk.LightCurveColl
     lc_collection = search_result.download_all()
     return lc_collection, sectors
 
+def detrend_lightcurve_production(stream2_lc: lk.LightCurve) -> Tuple[lk.LightCurve, lk.LightCurve]:
+    """
+    Shared production detrender used by both downloader.get_lightcurves() and injection_recovery.py.
+    Applies lightkurve's iterative outlier-clipped Savitzky-Golay filter:
+      - stream1_lc: Standard flattened (window_length=401, ~13.4h on 2-min cadence) for repeating BLS transits.
+      - wide_flat_lc: Wide flattened (window_length=2001, ~66.7h on 2-min cadence) for single-transit detection.
+    """
+    try:
+        n_pts = len(stream2_lc.time)
+        std_win = min(401, n_pts - 1 if (n_pts - 1) % 2 != 0 else n_pts - 2)
+        if std_win >= 5:
+            stream1_lc = stream2_lc.flatten(window_length=std_win)
+        else:
+            stream1_lc = stream2_lc.flatten()
+    except Exception:
+        stream1_lc = stream2_lc.flatten()
+
+    try:
+        n_points = len(stream2_lc.time)
+        wide_win = min(2001, n_points - 1 if (n_points - 1) % 2 != 0 else n_points - 2)
+        if wide_win > 200:
+            wide_flat_lc = stream2_lc.flatten(window_length=wide_win)
+        else:
+            wide_flat_lc = stream1_lc
+    except Exception:
+        wide_flat_lc = stream1_lc
+
+    return stream1_lc, wide_flat_lc
+
+
 def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve, lk.LightCurve, List[int]]]:
     """
     Queries MAST for the target and produces standardized data streams.
@@ -120,25 +150,12 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
             except Exception:
                 pass
         
-        # Stream 1: Standard Flattened (window=401) for BLS repeating transits
-        try:
-            stream1_lc = stream2_lc.flatten(window_length=401)
-        except Exception:
-            stream1_lc = stream2_lc.flatten()
-            
-        # Stream 3: Wide-Flattened (window=2001) for Single-Transit Detection
-        try:
-            n_points = len(stream2_lc.time)
-            wide_win = min(2001, n_points - 1 if (n_points - 1) % 2 != 0 else n_points - 2)
-            if wide_win > 200:
-                wide_flat_lc = stream2_lc.flatten(window_length=wide_win)
-            else:
-                wide_flat_lc = stream1_lc
-        except Exception:
-            wide_flat_lc = stream1_lc
+        # Shared production detrending (Stream 1: window=401, Stream 3: window=2001)
+        stream1_lc, wide_flat_lc = detrend_lightcurve_production(stream2_lc)
             
         return stream1_lc, stream2_lc, wide_flat_lc, sectors
         
     except Exception as e:
         logger.error(f"Error processing lightcurves for {target}: {e}")
         return None
+

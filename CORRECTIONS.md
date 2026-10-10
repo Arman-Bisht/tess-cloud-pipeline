@@ -44,6 +44,7 @@ This document transparently records all retracted early pipeline classifications
 | **BUG-10** | `vetter.py` | Direct flux-weighted centroiding pulls toward nearby static neighbor stars when the target dims during transit, causing false $5\sigma+$ blend failures on real on-target transits. Centroid `FAIL` also prematurely condemned candidates to Tier C. | Implemented Kepler/TESS SPOC Difference Imaging ($\Delta I = I_{\text{out}} - I_{\text{in}}$) per Bryson et al. (2013), canceling static neighbor flux to zero and measuring offset against target WCS coordinates. Softened centroid `FAIL` to Tier B ("Blend Alert / Needs Manual Review") rather than Tier C. |
 | **BUG-11** | `vetter.py` / `db.py` / Catalog | TPF difference imaging returns a pixel offset (`px`), which previously overwrote the `centroid_sigma` ($\sigma$ SEM) column; missing WCS fell back to the brightest pixel (`argmax`), which would lock onto a brighter neighbor star. | Added dedicated `centroid_offset_px` column to `master_discoveries.csv` and `db.py` (`v2.3.0`), re-ran HD 10528 (`0.33 px`) and HD 10720 (`0.45 px`, `0.50 sigma`), calibrated the `PASS` threshold ($\le 0.96\,\text{px}$) to the 99th percentile of on-target injections into real TESS TPFs, and changed missing-WCS fallback to `NOT_RUN`. |
 | **BUG-12** | `injection_recovery.py` / `vetter.py` | Earlier harness used $n=3$ reps/cell at $\text{SDE} \ge 8.0$, a fixed two-sinusoid `red_noise` template (`4.2 d` and `11.5 d`) across noise runs, and tested `run_bls` without detrending or `vet_signals()`. Also, `vetter.py` line 527 used single-point `depth / noise_level > 3.0` instead of phase-folded multi-cadence transit SNR. | Upgraded harness to $n=30$ reps/cell ($750$ full-pipeline trials at $\text{SDE} \ge 10.0$) and $n=60$ genuinely independent noise baselines (random rotation frequencies/phases + stochastic $\text{AR}(1)$ granulation + TESS mid-sector gaps), running full detrending + `run_bls` + `vet_signals()` with 95% Wilson / Clopper-Pearson confidence intervals and strict $1.0\%$ fundamental period matching. Fixed `vetter.py` to use multi-cadence transit SNR $(\delta/\sigma_1)\sqrt{N_{\text{in}}}$. |
+| **BUG-13** | `downloader.py` / `injection_recovery.py` / `vetter.py` | `injection_recovery.py` previously used a custom outlier-masked Savitzky-Golay detrender at 6.6-minute cadence rather than the production `lc.flatten(window_length=401)` at 2-minute cadence; TPF threshold calibration lacked a reproducible script/artifact; and 12 Tier B `"Monitor with TPF"` rows had not yet been evaluated against SPOC TPFs / TESScut FFIs. | Extracted shared `detrend_lightcurve_production()` in `downloader.py` and wired it into `injection_recovery.py` on 2-minute cadence (`19,728` points); added `calibrate_tpf_threshold.py` + `tpf_threshold_calibration.json` (`seed=20261010`, $N=100$ real SPOC TPF injections); added single-transit TPF sector-coverage guard (`epoch` within `[t[0], t[-1]]`); evaluated all 16 Tier B rows (promoting `HD 10635`, `HD 10653`, `HD 10661`, `HD 10669` to Tier A); cleared stale `centroid_sigma=0.5` on `HD 10720`; and added a 40-target Planet vs. False-Positive Precision/Recall benchmark (`v2.4.0`). |
 
 ---
 
@@ -52,30 +53,34 @@ This document transparently records all retracted early pipeline classifications
 * **Sample Footprint:** 732 HD stars (497 observed by TESS, 235 with no TESS observations).
 * **VSX Matches:** 34 stars match AAVSO VSX records (19 have unmeasured/NaN periods; 15 have published periods).
 * **Recoveries:** **4 of 15** ($26.7\%$) with usable published periods:
-  * 3 fundamental recoveries ($1.0\times$): HD 10720 ($0.03\%$ difference), HD 10502 ($1.000\times$), HD 10081 ($1.001\times$).
+  * 3 fundamental recoveries ($1.0\times$): HD 10720 ($0.002\%$ difference), HD 10502 ($1.000\times$), HD 10081 ($1.001\times$).
   * 1 harmonic recovery ($2.0\times$): HD 10040 ($1.998\times$, contact binary).
 * **External Control:** WASP-126 b ($1.000\times$) is reported as an external non-HD instrument control and strictly excluded from the HD survey denominator.
 
 ---
 
-## 4. Empirical Completeness Matrix & False-Alarm Rate (FAR) Calibration
+## 4. Empirical Completeness Matrix, FAR & Precision/Recall Calibration (`v2.4.0`)
 
-To replace heuristic sensitivity assumptions with rigorous statistical bounds, [`injection_recovery.py`](injection_recovery.py) evaluated 750 synthetic transit light curves ($n = 30$ reps/cell) and 60 genuinely independent red+white noise baselines through the full pipeline (iterative outlier-masked Savitzky-Golay detrending $\rightarrow$ `run_bls` $\rightarrow$ `vet_signals`):
+To replace heuristic sensitivity assumptions with rigorous statistical bounds, [`injection_recovery.py`](injection_recovery.py) evaluated 750 synthetic 2-minute cadence transit light curves ($n = 30$ reps/cell), 60 genuinely independent red+white noise baselines, and a 40-target Exoplanet vs. False-Positive benchmark through the shared production detrender (`detrend_lightcurve_production` $\rightarrow$ `run_bls` $\rightarrow$ `vet_signals`):
 
 ### 4.1 2D Full-Pipeline Recovery Completeness Grid ($P \times \text{Depth}$ at $\text{SDE} \ge 10.0$, $n = 30$ reps/cell)
 * **Strict Matching & Harmonic Separation:** Requires fundamental period error $\le 1.0\%$ at Tier A threshold $\text{SDE} \ge 10.0$ ($0.5\times / 2.0\times$ harmonics excluded; 95% Wilson / Clopper-Pearson confidence intervals in parentheses):
   * **$P \in [0.8, 3.5]\,\text{d}$, $\text{Depth} \ge 1000\,\text{ppm}$:** **$100\%$ (`90–100%`)** recovery.
-  * **$P = 7.0\,\text{d}$:** **$87\%$ (`70–95%`)** at $1000\,\text{ppm}$; **$100\%$ (`90–100%`)** at $\ge 2500\,\text{ppm}$.
-  * **Shallow Dips ($500\,\text{ppm}$):** **$100\%$ (`90–100%`)** at $P = 0.8\,\text{d}$, **$67\%$ (`49–81%`)** at $P = 1.5\,\text{d}$, **$10\%$ (`3–26%`)** at $P = 3.5\,\text{d}$, and **$0\%$ (`0–10%`)** at $P \ge 7.0\,\text{d}$.
-  * **Single-Sector Cycle Gate at $P = 12.0\,\text{d}$:** Because a single $27.4\,\text{d}$ TESS sector with a $1.2\,\text{d}$ mid-sector downlink gap spans $26.2\,\text{d}$ of observed coverage ($N_{\text{cycles}} = 2.18 < 3.0$), full periodic vetting intentionally routes single-sector $P = 12.0\,\text{d}$ detections to Tier C (`UNCLASSIFIED_PERIODIC_DIP`, $0\%$ in Tier A/B). Prior to the $N_{\text{cycles}} \ge 3.0$ gate, the underlying BLS + eclipse/orbital physics recovery at $P = 12.0\,\text{d}$ is **$13\%$ (`5–30%`)** at $1000\,\text{ppm}$, **$87\%$ (`70–95%`)** at $2500\,\text{ppm}$, and **$100\%$ (`90–100%`)** at $\ge 5000\,\text{ppm}$.
+  * **$P = 7.0\,\text{d}$:** **$23\%$ (`12–41%`)** at $1000\,\text{ppm}$, **$83\%$ (`66–93%`)** at $2500\,\text{ppm}$, and **$100\%$ (`90–100%`)** at $\ge 5000\,\text{ppm}$ (reflecting partial transit-depth attenuation of $\sim 4\,\text{h}$ transits by the unmasked $13.4\,\text{h}$ `window_length=401` Savitzky-Golay filter).
+  * **Shallow Dips ($500\,\text{ppm}$):** **$100\%$ (`90–100%`)** at $P = 0.8\,\text{d}$, **$97\%$ (`83–99%`)** at $P = 1.5\,\text{d}$, **$10\%$ (`3–26%`)** at $P = 3.5\,\text{d}$, and **$0\%$ (`0–10%`)** at $P \ge 7.0\,\text{d}$.
+  * **Single-Sector Cycle Gate at $P = 12.0\,\text{d}$ ($P_{\max} = 26.2\,\text{d}/3 \approx 8.73\,\text{d}$):** Because a single $27.4\,\text{d}$ TESS sector with a $1.2\,\text{d}$ mid-sector downlink gap spans $26.2\,\text{d}$ of observed coverage ($N_{\text{cycles}} = 2.18 < 3.0$), full periodic vetting intentionally routes single-sector $P = 12.0\,\text{d}$ detections to Tier C (`UNCLASSIFIED_PERIODIC_DIP`, $0\%$ in Tier A/B). Prior to the $N_{\text{cycles}} \ge 3.0$ gate, the underlying BLS + eclipse/orbital physics recovery at $P = 12.0\,\text{d}$ is **$70\%$ (`52–83%`)** at $5000\,\text{ppm}$ and **$100\%$ (`90–100%`)** at $10000\,\text{ppm}$.
 
 ### 4.2 Empirical False-Alarm Rate (FAR) vs. SDE Threshold ($n = 60$ Independent Realizations)
-Evaluated across 60 genuinely independent noise realizations (randomized stellar rotation frequencies and phases + stochastic $\text{AR}(1)$ granulation red noise + white photon noise + TESS mid-sector gap):
-* **Baseline Noise SDE:** Mean $= 5.50$, 95th percentile ceiling $= 7.26$.
-* **$\text{SDE} \ge 6.0$:** Raw BLS $\text{FAR} = 21.7\%$ ($13/60$, 95% CI: $13.1\text{–}33.6\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
-* **$\text{SDE} \ge 7.0$:** Raw BLS $\text{FAR} = 6.7\%$ ($4/60$, 95% CI: $2.6\text{–}15.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+Evaluated across 60 genuinely independent 2-minute cadence noise realizations (randomized stellar rotation frequencies and phases + stochastic $\text{AR}(1)$ granulation red noise + white photon noise + TESS mid-sector gap):
+* **Baseline Noise SDE:** Mean $= 5.86$, 95th percentile ceiling $= 7.26$.
+* **$\text{SDE} \ge 6.0$:** Raw BLS $\text{FAR} = 38.3\%$ ($23/60$, 95% CI: $27.1\text{–}51.0\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 7.0$:** Raw BLS $\text{FAR} = 11.7\%$ ($7/60$, 95% CI: $5.8\text{–}22.2\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
 * **$\text{SDE} \ge 8.0$:** Raw BLS $\text{FAR} = 1.7\%$ ($1/60$, 95% CI: $0.3\text{–}8.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
-* **$\text{SDE} \ge 9.0$:** Raw BLS $\text{FAR} = 1.7\%$ ($1/60$, 95% CI: $0.3\text{–}8.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 9.0$:** Raw BLS $\text{FAR} = 0.0\%$ ($0/60$, 95% CI: $0.0\text{–}4.9\%$) | Post-Vetting $\text{FAR} = 0.0\%$ ($0/60$).
 * **$\text{SDE} \ge 10.0$ (Tier A Gate):** Observed $\text{FAR} = 0.0\%$ ($0/60$ false alarms; **95% one-sided Clopper-Pearson upper bound $< 4.9\%$**).
-* **Conclusion:** Rather than claiming $0/N$ trials "guarantees 0.0% false alarms," we report the exact 95% binomial upper bound ($< 4.9\%$ at $n = 60$ for $\text{SDE} \ge 10.0$).
+
+### 4.3 40-Target Exoplanet vs. Astrophysical False-Positive Precision & Recall Benchmark
+Evaluated across 20 synthetic transiting exoplanets ($P \in [0.9, 7.2]\,\text{d}$, $\delta \in [1200, 14000]\,\text{ppm}$) and 20 astrophysical false positives (secondary-eclipse EBs, odd/even EBs, deep $4.5\%$ EBs, inside-star giant orbits, and pure red+white noise):
+* **True Positives:** $18 / 20$ planets recovered (**Recall $= 90.0\%$**).
+* **True Negatives:** $15 / 20$ false positives rejected ($\text{FP} = 5$, **Precision $= 78.3\%$**, **$\text{F1-Score} = 83.7\%$**).
 
