@@ -1,4 +1,5 @@
 import logging
+import socket
 from typing import Optional, Tuple, Dict, Any
 from astropy.coordinates import SkyCoord
 import astropy.units as u
@@ -11,8 +12,17 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Enforce network timeouts across MAST TIC, SIMBAD, and Vizier queries
+CATALOG_TIMEOUT_SECONDS = 25
+socket.setdefaulttimeout(CATALOG_TIMEOUT_SECONDS)
+try:
+    Catalogs.TIMEOUT = CATALOG_TIMEOUT_SECONDS
+except Exception:
+    pass
+
 # Configure SIMBAD with otype and sp_type (spectral type)
 custom_simbad = Simbad()
+custom_simbad.TIMEOUT = CATALOG_TIMEOUT_SECONDS
 try:
     custom_simbad.add_votable_fields('otype', 'sp_type')
 except Exception:

@@ -183,7 +183,7 @@ def save_discovery(tic_id: str,
     centroid_sigma = metrics.get('centroid_shift_sigma', np.nan)
     centroid_offset_px = metrics.get('centroid_offset_px', np.nan)
     centroid_desc = metrics.get('centroid_desc', 'Passed')
-    pipeline_version = "v2.4.0"
+    pipeline_version = "v2.5.0"
     
     cursor.execute('''
     INSERT INTO signals (
@@ -244,10 +244,15 @@ def save_discovery(tic_id: str,
 
     # Derive tier confidence respecting vetter metrics and audit flags
     tier = metrics.get('tier', 'B')
-    if tier == "A" and gaia_ok == "YES" and radius_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES":
+    rot_sanity_pass = metrics.get('rot_sanity_pass', True)
+    if tier == "A" and gaia_ok == "YES" and radius_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES" and rot_sanity_pass:
         clean_tier = "Tier A (Photocenter consistent with target)"
     elif tier in ["A", "B"] and (radius_ok == "NO" or gaia_ok == "NO"):
         clean_tier = "Tier B (Unconstrained Parameters)"
+    elif tier == "B" and not rot_sanity_pass:
+        clean_tier = "Tier B (Needs Review - Suspect Giant Rotation v_eq > 35 km/s)"
+    elif tier == "B" and centroid_status == "PASS_MARGINAL":
+        clean_tier = "Tier B (Needs Review - Offset Exceeds Per-Star TPF Null / Low TPF Amplitude)"
     elif tier == "B":
         clean_tier = "Tier B (Probable)"
     else:

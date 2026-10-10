@@ -159,6 +159,25 @@ def process_target(tic_id: str):
         # Explicit garbage collection between stars (Spec 4.1)
         gc.collect()
 
+PER_TARGET_TIMEOUT_SECONDS = 180
+
+def run_target_with_watchdog(tic_id: str, timeout_sec: float = PER_TARGET_TIMEOUT_SECONDS):
+    """
+    Executes process_target(tic_id) under a strict per-target watchdog timeout.
+    If MAST or a downstream socket hangs beyond timeout_sec, marks the target
+    DOWNLOAD_ERROR, purges partial cache, and prevents batch/Cloud Run starvation.
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as watchdog_pool:
+        fut = watchdog_pool.submit(process_target, tic_id)
+        try:
+            fut.result(timeout=timeout_sec)
+        except concurrent.futures.TimeoutError:
+            logger.error(f"Watchdog timeout ({timeout_sec}s) exceeded for {tic_id}; marking DOWNLOAD_ERROR.")
+            update_status(tic_id, "DOWNLOAD_ERROR")
+            purge_cache_for_target(tic_id)
+        except Exception as e:
+            logger.error(f"Error processing {tic_id}: {e}")
+
 def serverless_entry(request):
     """HTTP Cloud Function entry point."""
     request_json = request.get_json(silent=True)
@@ -190,13 +209,17 @@ def serverless_entry(request):
 
     logger.info(f"Processing batch of {len(targets_to_process)} targets with {workers} workers...")
     
-    # 3. Process Batch
+    # 3. Process Batch with per-target timeout protection
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(process_target, tic): tic for tic in targets_to_process}
         for future in concurrent.futures.as_completed(futures):
             tic = futures[future]
             try:
-                future.result()
+                future.result(timeout=PER_TARGET_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                logger.error(f"Timeout ({PER_TARGET_TIMEOUT_SECONDS}s) processing {tic}; marking DOWNLOAD_ERROR.")
+                update_status(tic, "DOWNLOAD_ERROR")
+                purge_cache_for_target(tic)
             except Exception as e:
                 logger.error(f"Error processing {tic}: {e}")
                 
@@ -255,16 +278,17 @@ def run_local_scan(start_hd: Optional[int] = None,
             for future in concurrent.futures.as_completed(futures):
                 tic = futures[future]
                 try:
-                    future.result()
+                    future.result(timeout=PER_TARGET_TIMEOUT_SECONDS)
+                except concurrent.futures.TimeoutError:
+                    logger.error(f"Timeout ({PER_TARGET_TIMEOUT_SECONDS}s) processing {tic}; marking DOWNLOAD_ERROR.")
+                    update_status(tic, "DOWNLOAD_ERROR")
+                    purge_cache_for_target(tic)
                 except Exception as e:
                     logger.error(f"Error processing {tic}: {e}")
     else:
         for idx, tic in enumerate(unprocessed, 1):
             logger.info(f"[{idx}/{len(unprocessed)}] Scanning {tic}...")
-            try:
-                process_target(tic)
-            except Exception as e:
-                logger.error(f"Error processing {tic}: {e}")
+            run_target_with_watchdog(tic, timeout_sec=PER_TARGET_TIMEOUT_SECONDS)
                 
     logger.info("✨ Astrohunter scan finished successfully.")
 

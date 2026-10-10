@@ -26,13 +26,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Plumbing, Retry, Centroid & Separation Sweep Tests (9 tests)
+      - name: Run Plumbing, Retry, Centroid, Quadrature & Giant Rotation Tests (12 tests)
         run: python test_vetter_plumbing.py
 
       - name: Run Downloader Chronological Sorting & Deduplication Regression Test
         run: python test_downloader_sorting.py
 
-      - name: Run Offline TPF Difference-Image 99th-Percentile Calibration Verification
+      - name: Run Offline TPF Difference-Image 95th-Percentile Calibration Verification (Read-Only)
         run: python calibrate_tpf_threshold.py --offline
 
       - name: Verify Master Catalog Schema & Row Integrity
@@ -42,6 +42,8 @@ jobs:
           df = pd.read_csv('master_discoveries.csv')
           assert len(df) == 34, f'Expected 34 rows, got {len(df)}'
           assert 'centroid_offset_px' in df.columns, 'Missing centroid_offset_px column'
-          assert (df['pipeline_version'] == 'v2.4.0').all(), 'All rows must carry v2.4.0'
-          print('Catalog integrity check passed: 34 rows, 27 columns, v2.4.0')
+          assert (df['pipeline_version'] == 'v2.5.0').all(), 'All rows must carry v2.5.0'
+          tier_a = df[df['confidence'].str.startswith('Tier A')]['name'].tolist()
+          assert set(tier_a) == {'HD 10528', 'HD 10635', 'HD 10653', 'HD 10720'}, f'Unexpected Tier A rows: {tier_a}'
+          print('Catalog integrity check passed: 34 rows, 27 columns, v2.5.0, 4 Tier A / 14 Tier B / 16 Tier C')
           "

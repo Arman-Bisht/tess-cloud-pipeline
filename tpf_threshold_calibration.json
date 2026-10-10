@@ -39,11 +39,54 @@
       ]
     }
   ],
+  "threshold_percentile_definition": "95th percentile of on-target SPOC TPF injections (0.96 px); 99th percentile is 1.061 px",
   "median_offset_px": 0.215,
   "p90_offset_px": 0.801,
   "p95_offset_px": 0.964,
   "p99_offset_px": 1.061,
   "adopted_pass_threshold_px": 0.96,
+  "per_star_transit_null": {
+    "HD 10528": {
+      "tic_id": "TIC 346940718",
+      "n_trials": 25,
+      "median_offset_px": 0.257,
+      "p90_offset_px": 0.51,
+      "p95_offset_px": 0.568,
+      "p99_offset_px": 0.613,
+      "max_offset_px": 0.623,
+      "per_star_ceiling_px": 0.71
+    },
+    "HD 10635": {
+      "tic_id": "TIC 399270628",
+      "n_trials": 25,
+      "median_offset_px": 0.366,
+      "p90_offset_px": 0.808,
+      "p95_offset_px": 0.962,
+      "p99_offset_px": 1.021,
+      "max_offset_px": 1.035,
+      "per_star_ceiling_px": 1.2
+    },
+    "HD 10653": {
+      "tic_id": "TIC 10863314",
+      "n_trials": 25,
+      "median_offset_px": 0.314,
+      "p90_offset_px": 0.984,
+      "p95_offset_px": 1.048,
+      "p99_offset_px": 1.15,
+      "max_offset_px": 1.178,
+      "per_star_ceiling_px": 1.31
+    },
+    "HD 10661": {
+      "tic_id": "TIC 229118094",
+      "n_trials": 25,
+      "median_offset_px": 0.138,
+      "p90_offset_px": 0.24,
+      "p95_offset_px": 0.265,
+      "p99_offset_px": 0.314,
+      "max_offset_px": 0.328,
+      "per_star_ceiling_px": 0.37
+    }
+  },
   "histogram": [
     {
       "bin_px": "[0.0, 0.2)",
@@ -1471,5 +1514,1658 @@
       "measured_offset_px": 0.0951,
       "status": "PASS"
     }
-  ]
+  ],
+  "variable_star_calibration": {
+    "calibration_seed": 20261025,
+    "n_injections": 100,
+    "statistic": "Fourier-phase-aligned peak-vs-trough difference image (signed img_peak - img_trough after slow scattered-light polynomial detrending)",
+    "median_offset_px": 0.1,
+    "p90_offset_px": 0.23,
+    "p95_offset_px": 0.374,
+    "p99_offset_px": 0.502,
+    "adopted_pass_threshold_px": 0.96,
+    "per_star_variable_null": {
+      "HD 10528": {
+        "tic_id": "TIC 346940718",
+        "n_trials": 25,
+        "median_offset_px": 0.09,
+        "p90_offset_px": 0.17,
+        "p95_offset_px": 0.322,
+        "p99_offset_px": 0.451,
+        "max_offset_px": 0.48,
+        "per_star_ceiling_px": 0.42
+      },
+      "HD 10635": {
+        "tic_id": "TIC 399270628",
+        "n_trials": 25,
+        "median_offset_px": 0.12,
+        "p90_offset_px": 0.222,
+        "p95_offset_px": 0.406,
+        "p99_offset_px": 0.488,
+        "max_offset_px": 0.5,
+        "per_star_ceiling_px": 0.51
+      },
+      "HD 10653": {
+        "tic_id": "TIC 10863314",
+        "n_trials": 25,
+        "median_offset_px": 0.13,
+        "p90_offset_px": 0.346,
+        "p95_offset_px": 0.442,
+        "p99_offset_px": 0.604,
+        "max_offset_px": 0.65,
+        "per_star_ceiling_px": 0.55
+      },
+      "HD 10661": {
+        "tic_id": "TIC 229118094",
+        "n_trials": 25,
+        "median_offset_px": 0.09,
+        "p90_offset_px": 0.142,
+        "p95_offset_px": 0.174,
+        "p99_offset_px": 0.188,
+        "max_offset_px": 0.19,
+        "per_star_ceiling_px": 0.27
+      }
+    },
+    "quadrature_blend_rejection_rate": 1.0,
+    "quadrature_blend_checks": [
+      {
+        "name": "HD 10528",
+        "phase_phi0": 0.0,
+        "measured_offset_px": 2.99,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10528",
+        "phase_phi0": 0.25,
+        "measured_offset_px": 2.94,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10528",
+        "phase_phi0": 0.5,
+        "measured_offset_px": 2.95,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10528",
+        "phase_phi0": 0.75,
+        "measured_offset_px": 2.98,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10635",
+        "phase_phi0": 0.0,
+        "measured_offset_px": 2.95,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10635",
+        "phase_phi0": 0.25,
+        "measured_offset_px": 2.94,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10635",
+        "phase_phi0": 0.5,
+        "measured_offset_px": 2.97,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10635",
+        "phase_phi0": 0.75,
+        "measured_offset_px": 2.95,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10653",
+        "phase_phi0": 0.0,
+        "measured_offset_px": 2.92,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10653",
+        "phase_phi0": 0.25,
+        "measured_offset_px": 2.93,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10653",
+        "phase_phi0": 0.5,
+        "measured_offset_px": 2.91,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10653",
+        "phase_phi0": 0.75,
+        "measured_offset_px": 2.94,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10661",
+        "phase_phi0": 0.0,
+        "measured_offset_px": 2.95,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10661",
+        "phase_phi0": 0.25,
+        "measured_offset_px": 2.96,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10661",
+        "phase_phi0": 0.5,
+        "measured_offset_px": 2.95,
+        "status": "FAIL"
+      },
+      {
+        "name": "HD 10661",
+        "phase_phi0": 0.75,
+        "measured_offset_px": 2.92,
+        "status": "FAIL"
+      }
+    ],
+    "trials": [
+      {
+        "trial_id": 1,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7883,
+        "amp_ppm": 4708.8,
+        "phase_phi0": 0.3124,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.17,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 2,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.4856,
+        "amp_ppm": 6846.9,
+        "phase_phi0": 0.5456,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 3,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.0735,
+        "amp_ppm": 3426.3,
+        "phase_phi0": 0.9124,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.65,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 4,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1992,
+        "amp_ppm": 6870.4,
+        "phase_phi0": 0.8943,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.1,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 5,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.8704,
+        "amp_ppm": 14666.0,
+        "phase_phi0": 0.12,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 6,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3752,
+        "amp_ppm": 10880.7,
+        "phase_phi0": 0.3056,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 7,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9575,
+        "amp_ppm": 8328.3,
+        "phase_phi0": 0.1515,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 8,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.6367,
+        "amp_ppm": 3145.4,
+        "phase_phi0": 0.9082,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.06,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 9,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.9477,
+        "amp_ppm": 8235.4,
+        "phase_phi0": 0.1355,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.07,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 10,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3073,
+        "amp_ppm": 13229.6,
+        "phase_phi0": 0.4386,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.14,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 11,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.97,
+        "amp_ppm": 8410.7,
+        "phase_phi0": 0.9199,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 12,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.8287,
+        "amp_ppm": 13580.8,
+        "phase_phi0": 0.8929,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.13,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 13,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.2569,
+        "amp_ppm": 8802.8,
+        "phase_phi0": 0.1637,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 14,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.8743,
+        "amp_ppm": 13701.9,
+        "phase_phi0": 0.5118,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 15,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.1058,
+        "amp_ppm": 9931.5,
+        "phase_phi0": 0.7116,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.14,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 16,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1108,
+        "amp_ppm": 10823.3,
+        "phase_phi0": 0.5323,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.07,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 17,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7585,
+        "amp_ppm": 11788.0,
+        "phase_phi0": 0.1601,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 18,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.6182,
+        "amp_ppm": 8989.8,
+        "phase_phi0": 0.1208,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 19,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.7219,
+        "amp_ppm": 4458.2,
+        "phase_phi0": 0.1355,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.31,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 20,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.8517,
+        "amp_ppm": 4207.6,
+        "phase_phi0": 0.1311,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.11,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 21,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.5004,
+        "amp_ppm": 5848.3,
+        "phase_phi0": 0.2326,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.06,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 22,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9822,
+        "amp_ppm": 6364.4,
+        "phase_phi0": 0.0317,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.18,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 23,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.6254,
+        "amp_ppm": 4460.5,
+        "phase_phi0": 0.453,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 24,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.873,
+        "amp_ppm": 10165.4,
+        "phase_phi0": 0.3529,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.1,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 25,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9087,
+        "amp_ppm": 12577.4,
+        "phase_phi0": 0.551,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.1,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 26,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.5515,
+        "amp_ppm": 4445.4,
+        "phase_phi0": 0.501,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.05,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 27,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.5652,
+        "amp_ppm": 6955.2,
+        "phase_phi0": 0.5074,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.23,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 28,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.2925,
+        "amp_ppm": 7757.8,
+        "phase_phi0": 0.8304,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.19,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 29,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.9212,
+        "amp_ppm": 3404.1,
+        "phase_phi0": 0.8481,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.48,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 30,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1856,
+        "amp_ppm": 4937.1,
+        "phase_phi0": 0.7316,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.5,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 31,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3286,
+        "amp_ppm": 3936.0,
+        "phase_phi0": 0.4065,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.07,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 32,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.006,
+        "amp_ppm": 11607.4,
+        "phase_phi0": 0.1866,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 33,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.8324,
+        "amp_ppm": 7225.0,
+        "phase_phi0": 0.4295,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.17,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 34,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9517,
+        "amp_ppm": 5951.2,
+        "phase_phi0": 0.0857,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.16,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 35,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.6794,
+        "amp_ppm": 7996.2,
+        "phase_phi0": 0.8545,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.22,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 36,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.0048,
+        "amp_ppm": 13293.2,
+        "phase_phi0": 0.669,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.11,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 37,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.9434,
+        "amp_ppm": 12709.4,
+        "phase_phi0": 0.4523,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.05,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 38,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.2764,
+        "amp_ppm": 11623.7,
+        "phase_phi0": 0.1825,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 39,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.8392,
+        "amp_ppm": 3739.5,
+        "phase_phi0": 0.2577,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.21,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 40,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.8042,
+        "amp_ppm": 8354.3,
+        "phase_phi0": 0.5066,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.18,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 41,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.1995,
+        "amp_ppm": 4250.1,
+        "phase_phi0": 0.3042,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.06,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 42,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7836,
+        "amp_ppm": 9514.7,
+        "phase_phi0": 0.5681,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 43,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9633,
+        "amp_ppm": 13771.6,
+        "phase_phi0": 0.8423,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 44,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.1237,
+        "amp_ppm": 11688.8,
+        "phase_phi0": 0.1621,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 45,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.5054,
+        "amp_ppm": 10021.1,
+        "phase_phi0": 0.8473,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.11,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 46,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1169,
+        "amp_ppm": 14207.7,
+        "phase_phi0": 0.0568,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.23,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 47,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3235,
+        "amp_ppm": 11156.5,
+        "phase_phi0": 0.845,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.2,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 48,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3972,
+        "amp_ppm": 13172.3,
+        "phase_phi0": 0.789,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.04,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 49,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.0887,
+        "amp_ppm": 4111.2,
+        "phase_phi0": 0.4814,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.36,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 50,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.0128,
+        "amp_ppm": 14775.1,
+        "phase_phi0": 0.2258,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.06,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 51,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.0692,
+        "amp_ppm": 8490.7,
+        "phase_phi0": 0.9034,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.1,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 52,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.8422,
+        "amp_ppm": 7884.7,
+        "phase_phi0": 0.1662,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.06,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 53,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.1038,
+        "amp_ppm": 11996.3,
+        "phase_phi0": 0.6749,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.13,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 54,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7179,
+        "amp_ppm": 5493.1,
+        "phase_phi0": 0.8462,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.01,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 55,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1649,
+        "amp_ppm": 14919.0,
+        "phase_phi0": 0.921,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 56,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.7204,
+        "amp_ppm": 8567.5,
+        "phase_phi0": 0.6981,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.04,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 57,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3388,
+        "amp_ppm": 9709.1,
+        "phase_phi0": 0.7948,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.04,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 58,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9355,
+        "amp_ppm": 4605.1,
+        "phase_phi0": 0.0732,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.21,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 59,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.6775,
+        "amp_ppm": 8117.6,
+        "phase_phi0": 0.9364,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.1,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 60,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.5594,
+        "amp_ppm": 14927.5,
+        "phase_phi0": 0.3574,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 61,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.6243,
+        "amp_ppm": 7121.1,
+        "phase_phi0": 0.0017,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.0,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 62,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7997,
+        "amp_ppm": 11454.8,
+        "phase_phi0": 0.6618,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.05,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 63,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9411,
+        "amp_ppm": 12608.1,
+        "phase_phi0": 0.441,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 64,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9305,
+        "amp_ppm": 12757.3,
+        "phase_phi0": 0.6072,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.01,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 65,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.164,
+        "amp_ppm": 8868.2,
+        "phase_phi0": 0.0105,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.03,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 66,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1478,
+        "amp_ppm": 4829.2,
+        "phase_phi0": 0.1617,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.45,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 67,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.0326,
+        "amp_ppm": 10873.8,
+        "phase_phi0": 0.3445,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.3,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 68,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.642,
+        "amp_ppm": 10350.3,
+        "phase_phi0": 0.6509,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 69,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1271,
+        "amp_ppm": 10732.5,
+        "phase_phi0": 0.6617,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.01,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 70,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.5776,
+        "amp_ppm": 6260.9,
+        "phase_phi0": 0.4218,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 71,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.6596,
+        "amp_ppm": 13341.9,
+        "phase_phi0": 0.317,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 72,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.0846,
+        "amp_ppm": 13318.2,
+        "phase_phi0": 0.8886,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.06,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 73,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9488,
+        "amp_ppm": 4856.6,
+        "phase_phi0": 0.2495,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 74,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.6096,
+        "amp_ppm": 5926.4,
+        "phase_phi0": 0.7663,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 75,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9903,
+        "amp_ppm": 5009.4,
+        "phase_phi0": 0.8416,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.04,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 76,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7019,
+        "amp_ppm": 5577.9,
+        "phase_phi0": 0.2513,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.03,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 77,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3237,
+        "amp_ppm": 13159.1,
+        "phase_phi0": 0.0861,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 78,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.5815,
+        "amp_ppm": 10002.1,
+        "phase_phi0": 0.6978,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.19,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 79,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.6891,
+        "amp_ppm": 8480.2,
+        "phase_phi0": 0.0574,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.13,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 80,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.2073,
+        "amp_ppm": 8637.6,
+        "phase_phi0": 0.0637,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.09,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 81,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.245,
+        "amp_ppm": 14265.5,
+        "phase_phi0": 0.4966,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 82,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.871,
+        "amp_ppm": 4213.1,
+        "phase_phi0": 0.4287,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.11,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 83,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.6423,
+        "amp_ppm": 5150.9,
+        "phase_phi0": 0.207,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.22,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 84,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.3646,
+        "amp_ppm": 3920.7,
+        "phase_phi0": 0.8716,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.15,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 85,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.5212,
+        "amp_ppm": 3185.4,
+        "phase_phi0": 0.4786,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.1,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 86,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7157,
+        "amp_ppm": 4657.4,
+        "phase_phi0": 0.0799,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 87,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.4546,
+        "amp_ppm": 3252.5,
+        "phase_phi0": 0.1522,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.37,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 88,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.9072,
+        "amp_ppm": 5147.9,
+        "phase_phi0": 0.9151,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.03,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 89,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1597,
+        "amp_ppm": 10580.4,
+        "phase_phi0": 0.2175,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 90,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.8667,
+        "amp_ppm": 7798.0,
+        "phase_phi0": 0.2552,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.0,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 91,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.9939,
+        "amp_ppm": 6149.5,
+        "phase_phi0": 0.8717,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.46,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 92,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7538,
+        "amp_ppm": 7376.2,
+        "phase_phi0": 0.2963,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.05,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 93,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.09,
+        "amp_ppm": 14830.6,
+        "phase_phi0": 0.3445,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.15,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 94,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.9477,
+        "amp_ppm": 12186.0,
+        "phase_phi0": 0.9411,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.14,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 95,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1022,
+        "amp_ppm": 4423.5,
+        "phase_phi0": 0.8985,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.23,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 96,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.7367,
+        "amp_ppm": 9067.9,
+        "phase_phi0": 0.6218,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.05,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 97,
+        "tic_id": "TIC 346940718",
+        "name": "HD 10528",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 2.1493,
+        "amp_ppm": 14984.1,
+        "phase_phi0": 0.3094,
+        "wcs_target_px": [
+          4.932,
+          4.939
+        ],
+        "measured_offset_px": 0.06,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 98,
+        "tic_id": "TIC 399270628",
+        "name": "HD 10635",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.5868,
+        "amp_ppm": 6696.5,
+        "phase_phi0": 0.7867,
+        "wcs_target_px": [
+          5.562,
+          5.401
+        ],
+        "measured_offset_px": 0.12,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 99,
+        "tic_id": "TIC 10863314",
+        "name": "HD 10653",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 1.4087,
+        "amp_ppm": 4901.5,
+        "phase_phi0": 0.4645,
+        "wcs_target_px": [
+          5.713,
+          6.083
+        ],
+        "measured_offset_px": 0.08,
+        "status": "PASS"
+      },
+      {
+        "trial_id": 100,
+        "tic_id": "TIC 229118094",
+        "name": "HD 10661",
+        "source": "MAST_SPOC_TPF",
+        "period_d": 0.5323,
+        "amp_ppm": 8113.8,
+        "phase_phi0": 0.5723,
+        "wcs_target_px": [
+          4.807,
+          4.324
+        ],
+        "measured_offset_px": 0.05,
+        "status": "PASS"
+      }
+    ]
+  }
 }

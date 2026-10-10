@@ -289,6 +289,90 @@ def test_shared_production_detrender_and_tpf_sector_guard():
 
     print("  -> Passed: Shared production detrender and single-transit out-of-sector TPF guard verified.")
 
+
+def test_variable_difference_image_quadrature_and_per_star_null():
+    print("[Test 11] Verifying variable-star difference imaging across all 4 phases (including quadrature), per-star null ceiling, and amplitude coherence...")
+    from vetter import compute_variable_difference_image_centroid
+
+    np.random.seed(202611)
+    n_cad = 600
+    t = np.linspace(0.0, 27.4, n_cad)
+    period_d = 2.4
+    y_grid, x_grid = np.mgrid[:11, :11]
+    target_prf = np.exp(-((x_grid - 5.0) ** 2 + (y_grid - 5.0) ** 2) / 2.0)
+    target_prf /= np.sum(target_prf)
+    neighbor_prf = np.exp(-((x_grid - 8.0) ** 2 + (y_grid - 5.0) ** 2) / 2.0)
+    neighbor_prf /= np.sum(neighbor_prf)
+
+    # 1. On-target variable and 3-px neighbor variable blend across all 4 cardinal phases {0.0, 0.25, 0.50, 0.75}
+    for phi_0 in (0.0, 0.25, 0.50, 0.75):
+        mod = 0.015 * np.sin(2.0 * np.pi * (t / period_d + phi_0))[:, None, None]
+        noise = np.random.normal(0.0, 0.5, (n_cad, 11, 11))
+
+        # On-target variable + static 40% neighbor at 3 px -> must PASS at every phase
+        cube_on = 1000.0 * target_prf[None, :, :] * (1.0 + mod) + 400.0 * neighbor_prf[None, :, :] + noise
+        st_on, off_on, _ = compute_variable_difference_image_centroid(
+            t, cube_on, period_d, target_pos=(5.0, 5.0), expected_amp=0.015
+        )
+        assert st_on == "PASS", f"Expected PASS for on-target variable at phase {phi_0}, got {st_on} ({off_on} px)"
+        assert off_on < 0.35, f"Expected < 0.35 px offset for on-target variable at phase {phi_0}, got {off_on}"
+
+        # Static target + 3-px variable neighbor blend -> must FAIL at every phase (including quadrature phi_0=0.25)
+        cube_blend = 1000.0 * target_prf[None, :, :] + 400.0 * neighbor_prf[None, :, :] * (1.0 + 3.0 * mod) + noise
+        st_bl, off_bl, _ = compute_variable_difference_image_centroid(
+            t, cube_blend, period_d, target_pos=(5.0, 5.0)
+        )
+        assert st_bl == "FAIL", f"Expected FAIL for 3-px variable blend at phase {phi_0}, got {st_bl} ({off_bl} px)"
+        assert off_bl > 2.4, f"Expected > 2.4 px offset for 3-px variable blend at phase {phi_0}, got {off_bl}"
+
+    # 2. Per-star null ceiling check (HD 10661 case: offset 0.75 px <= 0.96 px pooled, but > 0.37 px per-star ceiling)
+    shifted_prf = np.exp(-((x_grid - 5.75) ** 2 + (y_grid - 5.0) ** 2) / 2.0)
+    shifted_prf /= np.sum(shifted_prf)
+    mod0 = 0.015 * np.sin(2.0 * np.pi * (t / period_d))[:, None, None]
+    cube_marginal = 1000.0 * target_prf[None, :, :] + 1000.0 * shifted_prf[None, :, :] * mod0
+    st_m, off_m, msg_m = compute_variable_difference_image_centroid(
+        t, cube_marginal, period_d, target_pos=(5.0, 5.0), per_star_ceiling_px=0.37
+    )
+    assert st_m == "PASS_MARGINAL", f"Expected PASS_MARGINAL when offset ({off_m}) > per_star_ceiling_px (0.37), got {st_m}"
+    assert "exceeds star's own TPF injection ceiling" in msg_m
+
+    # 3. TPF folded amplitude coherence check (HD 10661 case: TPF folded amp << expected_amp)
+    cube_weak_amp = 1000.0 * target_prf[None, :, :] * (1.0 + 0.0003 * np.sin(2.0 * np.pi * (t / period_d))[:, None, None])
+    st_w, _, msg_w = compute_variable_difference_image_centroid(
+        t, cube_weak_amp, period_d, target_pos=(5.0, 5.0), expected_amp=0.0062
+    )
+    assert st_w == "PASS_MARGINAL", f"Expected PASS_MARGINAL when TPF amplitude is <25% of expected, got {st_w}"
+    assert "below expected lightcurve amplitude" in msg_w
+    print("  -> Passed: Quadrature phase alignment (4/4 phases), per-star null ceiling, and amplitude check verified.")
+
+
+def test_giant_rotation_sanity_and_offline_calibration():
+    print("[Test 12] Verifying giant equatorial rotation speed sanity check (HD 10669) and read-only --offline calibration...")
+    from vetter import check_giant_rotation_sanity, assign_tier
+    from calibrate_tpf_threshold import verify_committed_calibration_offline, OUTPUT_JSON_PATH
+
+    # 1. HD 10669: R* = 12.8 R_sun, P = 7.94418 d -> v_eq = 81.5 km/s > 35.0 km/s -> must flag False and Tier B
+    rot_ok, v_eq, desc = check_giant_rotation_sanity(7.94418, 12.8)
+    assert not rot_ok, "Expected HD 10669 (R*=12.8 R_sun, P=7.94d) to fail single-giant rotation sanity"
+    assert abs(v_eq - 81.5) <= 0.2, f"Expected v_eq ~ 81.5 km/s, got {v_eq}"
+    tier_669 = assign_tier("VARIABLE_STAR", 15.9, 3.4, True, "PASS", r_star=12.8, rot_sanity_pass=rot_ok)
+    assert tier_669 == "B", f"Expected Tier B for suspect giant rotation, got Tier {tier_669}"
+
+    # 2. Normal slow giant (R* = 10.0 R_sun, P = 30.0 d -> v_eq = 16.9 km/s <= 35 km/s) and dwarf -> must pass
+    rot_ok_slow, v_slow, _ = check_giant_rotation_sanity(30.0, 10.0)
+    assert rot_ok_slow and v_slow < 35.0
+    rot_ok_dwarf, _, _ = check_giant_rotation_sanity(1.0677, 2.77)
+    assert rot_ok_dwarf
+
+    # 3. Verify --offline calibration check is strictly read-only and validates 95th-percentile (0.96 px)
+    before_bytes = OUTPUT_JSON_PATH.read_bytes()
+    cal_data = verify_committed_calibration_offline()
+    after_bytes = OUTPUT_JSON_PATH.read_bytes()
+    assert before_bytes == after_bytes, "Offline calibration verification must NEVER modify tpf_threshold_calibration.json"
+    assert cal_data["adopted_pass_threshold_px"] == 0.96
+    print("  -> Passed: Giant rotation sanity check (HD 10669 -> Tier B) and read-only offline calibration verified.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -300,5 +384,7 @@ if __name__ == "__main__":
     test_difference_image_centroid_benchmarks()
     test_difference_image_separation_sweep_and_missing_wcs()
     test_shared_production_detrender_and_tpf_sector_guard()
-    print("\n=== ALL 10 PLUMBING, RETRY, CENTROID, SEPARATION SWEEP, DETRENDER & VETTING TESTS PASSED! ===")
+    test_variable_difference_image_quadrature_and_per_star_null()
+    test_giant_rotation_sanity_and_offline_calibration()
+    print("\n=== ALL 12 PLUMBING, RETRY, CENTROID, QUADRATURE, GIANT ROTATION & CALIBRATION TESTS PASSED! ===")
 

@@ -1,12 +1,21 @@
 import os
 import shutil
 import glob
+import socket
 import lightkurve as lk
 import numpy as np
 import logging
 from typing import Tuple, Optional, List
 from tenacity import retry, wait_exponential, stop_after_attempt
 from config import MAX_SECTORS, LIGHTKURVE_CACHE_DIR
+
+MAST_TIMEOUT_SECONDS = 30
+socket.setdefaulttimeout(MAST_TIMEOUT_SECONDS)
+try:
+    from astroquery.mast import Observations
+    Observations.TIMEOUT = MAST_TIMEOUT_SECONDS
+except Exception:
+    pass
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,8 +63,10 @@ class DownloadNetworkError(Exception):
 def _download_target_collection(target: str) -> Tuple[Optional[lk.LightCurveCollection], List[int]]:
     """
     Queries MAST and downloads LightCurveCollection with retry on network errors.
+    Enforces a strict socket and astroquery timeout to prevent stalled TCP hangs.
     Filters by exposure time (prefers 120s SPOC) and deduplicates sectors.
     """
+    socket.setdefaulttimeout(MAST_TIMEOUT_SECONDS)
     search_result = lk.search_lightcurve(target, author='SPOC')
     if len(search_result) == 0:
         search_result = lk.search_lightcurve(target, author='QLP')
@@ -126,7 +137,7 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
       - lc_unflat: Unflattened normalized light curve WITHOUT upper outlier clipping (preserves microlensing/flares & variables).
       - lc_wide_flat: Wide-flattened light curve (window=2001) for single transit detection.
       - sectors: List of observed sector numbers.
-    Raises DownloadNetworkError on persistent network/MAST failures.
+    Raises DownloadNetworkError on persistent network/MAST failures or socket timeouts.
     """
     try:
         try:
@@ -155,6 +166,8 @@ def get_lightcurves(target: str) -> Optional[Tuple[lk.LightCurve, lk.LightCurve,
             
         return stream1_lc, stream2_lc, wide_flat_lc, sectors
         
+    except DownloadNetworkError:
+        raise
     except Exception as e:
         logger.error(f"Error processing lightcurves for {target}: {e}")
         return None
