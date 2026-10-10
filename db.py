@@ -71,6 +71,7 @@ def init_db():
         ("n_cycles", "REAL"),
         ("centroid_status", "TEXT"),
         ("centroid_shift_sigma", "REAL"),
+        ("centroid_offset_px", "REAL"),
         ("centroid_desc", "TEXT"),
         ("pipeline_version", "TEXT"),
         ("sectors", "TEXT"),
@@ -94,7 +95,7 @@ def init_db():
             writer = csv.writer(f)
             writer.writerow([
                 "name", "tic_id", "gaia_dr3_id", "ra", "dec", "period", "period_err", "vsx_period", "period_ratio", 
-                "n_cycles", "centroid_status", "centroid_sigma", "amplitude", "depth", "category", "r_star_rsun", 
+                "n_cycles", "centroid_status", "centroid_sigma", "centroid_offset_px", "amplitude", "depth", "category", "r_star_rsun", 
                 "r_comp_rjup", "simbad_type", "vsx_known", "gaia_ok", "radius_ok", "orbit_phys_ok", 
                 "duration_phys_ok", "confidence", "pipeline_version", "notes"
             ])
@@ -179,21 +180,22 @@ def save_discovery(tic_id: str,
     period_err = metrics.get('period_err')
     n_cycles = metrics.get('n_cycles', round(metrics.get('cycles', 1.0), 1))
     centroid_status = metrics.get('centroid_status', 'NOT_RUN')
-    centroid_sigma = metrics.get('centroid_shift_sigma', 0.0)
+    centroid_sigma = metrics.get('centroid_shift_sigma', np.nan)
+    centroid_offset_px = metrics.get('centroid_offset_px', np.nan)
     centroid_desc = metrics.get('centroid_desc', 'Passed')
-    pipeline_version = "v2.2.0"
+    pipeline_version = "v2.3.0"
     
     cursor.execute('''
     INSERT INTO signals (
         tic_id, name, ra, dec, category, type, period, period_err, vsx_period, period_ratio,
-        n_cycles, centroid_status, centroid_shift_sigma, centroid_desc, pipeline_version,
+        n_cycles, centroid_status, centroid_shift_sigma, centroid_offset_px, centroid_desc, pipeline_version,
         epoch, depth, amplitude, duration, sde, fap, tier, confidence, simbad_type, 
         vsx_known, sectors, plot_path
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         tic_id, name, ra, dec, category, category, period, period_err, vsx_period, period_ratio,
-        n_cycles, centroid_status, centroid_sigma, centroid_desc, pipeline_version,
+        n_cycles, centroid_status, centroid_sigma, centroid_offset_px, centroid_desc, pipeline_version,
         epoch, depth, amplitude, duration, sde, fap, tier, confidence, simbad_type,
         vsx_known, sectors_str, plot_path
     ))
@@ -243,7 +245,7 @@ def save_discovery(tic_id: str,
     # Derive tier confidence respecting vetter metrics and audit flags
     tier = metrics.get('tier', 'B')
     if tier == "A" and gaia_ok == "YES" and radius_ok == "YES" and orbit_phys_ok in ["YES", "N/A"] and duration_phys_ok == "YES":
-        clean_tier = "Tier A (Vetted Clean)"
+        clean_tier = "Tier A (Photocenter consistent with target)"
     elif tier in ["A", "B"] and (radius_ok == "NO" or gaia_ok == "NO"):
         clean_tier = "Tier B (Unconstrained Parameters)"
     elif tier == "B":
@@ -267,6 +269,7 @@ def save_discovery(tic_id: str,
             round(n_cycles, 1) if n_cycles else "1.0",
             centroid_status,
             round(centroid_sigma, 2) if (centroid_sigma is not None and not np.isnan(centroid_sigma)) else "NaN",
+            round(centroid_offset_px, 2) if (centroid_offset_px is not None and not np.isnan(centroid_offset_px)) else "NaN",
             round(amplitude, 6) if amplitude else "", 
             round(depth, 5) if depth else "", 
             category, 

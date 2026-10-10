@@ -214,6 +214,47 @@ def test_difference_image_centroid_benchmarks():
     
     print("  -> Passed: Difference Image Centroid correctly passes contaminated on-target transits and flags neighbor blends.")
 
+# 9. Test Difference Image Separation Sweep (0.5 to 3.0 px) & Missing WCS NOT_RUN Guard
+def test_difference_image_separation_sweep_and_missing_wcs():
+    print("Test 9: Testing Difference Image Separation Sweep (0.5..3.0 px) & Missing WCS NOT_RUN guard...")
+    from vetter import compute_difference_image_centroid, assign_tier
+    
+    n_cad = 500
+    np.random.seed(101)
+    t = np.linspace(0, 10, n_cad)
+    y_grid, x_grid = np.mgrid[:11, :11]
+    
+    target_prf = np.exp(-((x_grid - 5.0)**2 + (y_grid - 5.0)**2) / 2.0)
+    target_prf /= np.sum(target_prf)
+    
+    in_tr = (t > 4.5) & (t < 5.5)
+    out_tr = (t < 4.0) | (t > 6.0)
+    
+    # 9a. Missing WCS (target_pos=None) must return NOT_RUN, even if a bright neighbor exists
+    bright_neighbor_prf = np.exp(-((x_grid - 8.0)**2 + (y_grid - 5.0)**2) / 2.0)
+    bright_neighbor_prf /= np.sum(bright_neighbor_prf)
+    cube_no_wcs = np.array([(500.0 * target_prf + 2000.0 * (0.95 if in_tr[i] else 1.0) * bright_neighbor_prf + np.random.normal(0, 1.0, (11, 11))) for i in range(n_cad)])
+    st_nowcs, off_nowcs, _ = compute_difference_image_centroid(cube_no_wcs, in_tr, out_tr, target_pos=None)
+    assert st_nowcs == "NOT_RUN" and np.isnan(off_nowcs), f"Expected NOT_RUN when WCS target_pos is None, got {st_nowcs}"
+    
+    # 9b. Separation sweep across neighbor blend distances: 0.5, 1.3, 2.5, 3.0 px
+    sweep_Expectations = [
+        (0.5, "PASS", "A"),           # Sub-pixel blend (< 0.96 px physical resolution limit)
+        (1.3, "PASS_MARGINAL", "B"),  # Marginal zone (0.96 - 1.8 px) -> gated to Tier B
+        (2.5, "FAIL", "B"),           # Resolved blend (> 1.8 px) -> FAIL (gated to Tier B blend alert)
+        (3.0, "FAIL", "B")            # Wide blend -> FAIL
+    ]
+    for sep_px, expected_status, expected_tier in sweep_Expectations:
+        nb_prf = np.exp(-((x_grid - (5.0 + sep_px))**2 + (y_grid - 5.0)**2) / 2.0)
+        nb_prf /= np.sum(nb_prf)
+        cube_sep = np.array([(1000.0 * target_prf + 500.0 * (0.94 if in_tr[i] else 1.0) * nb_prf + np.random.normal(0, 0.8, (11, 11))) for i in range(n_cad)])
+        st_s, off_s, _ = compute_difference_image_centroid(cube_sep, in_tr, out_tr, target_pos=(5.0, 5.0))
+        tier_s = assign_tier("CANDIDATE_EXOPLANET", sde=14.0, cycles=5.0, sec_pass=True, centroid_status=st_s, r_star=1.0, orbit_pass=True, dur_pass=True, is_known=False)
+        assert st_s == expected_status, f"At sep={sep_px} px: expected {expected_status}, got {st_s} (offset={off_s} px)"
+        assert tier_s == expected_tier, f"At sep={sep_px} px: expected Tier {expected_tier}, got Tier {tier_s}"
+        
+    print("  -> Passed: Separation sweep (0.5..3.0 px) & missing-WCS NOT_RUN guard verified.")
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -223,4 +264,5 @@ if __name__ == "__main__":
     test_download_error_retry()
     test_unmeasured_centroid_planet_classification()
     test_difference_image_centroid_benchmarks()
-    print("\n=== ALL 8 PLUMBING, RETRY, CENTROID & VETTING TESTS PASSED! ===")
+    test_difference_image_separation_sweep_and_missing_wcs()
+    print("\n=== ALL 9 PLUMBING, RETRY, CENTROID, SEPARATION SWEEP & VETTING TESTS PASSED! ===")

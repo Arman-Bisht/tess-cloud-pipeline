@@ -40,8 +40,10 @@ This document transparently records all retracted early pipeline classifications
 | **BUG-06** | Test Suite | `test_pipeline_upgrades.py` called `save_discovery` and appended synthetic test star `HD_TEST_SINGLE` to production CSV. | Purged test row from catalog; isolated tests from production database and CSV. |
 | **BUG-07** | `vetter.py` | In `vet_signals()`, the BLS branch required `... and centroid_pass` for exoplanet candidates. When centroid was unmeasured (`NOT_RUN`), `centroid_pass` was `False`, causing clean planet candidates to be mislabeled as `ECLIPSING_BINARY`. | Changed condition to `centroid_status != "FAIL"`. Unmeasured centroids now classify as `CANDIDATE_EXOPLANET` and are gated to Tier B by `assign_tier()`. |
 | **BUG-08** | `main.py` | `process_target()` line 71 returned early if status was not `["PENDING", "PROCESSING"]`, preventing targets with transient download errors from ever being retried. | Added `"DOWNLOAD_ERROR"` to the allowable retry states in `main.py`, `serverless_entry()`, and `run_local_scan()`. |
-| **BUG-09** | Engines & Catalog | Discrete grid artifacts produced duplicate periods across unrelated stars (`10.64627 d` and `17.53407 d`), while the catalog lacked honest period uncertainties and centroid statuses. | Implemented fine subgrid peak zooming and FWHM $\sigma_P$ calculation; resolved grid duplicates (HD 10555: $10.962 \pm 0.406\,\text{d}$; HD 10614: $10.834 \pm 0.398\,\text{d}$; HD 10594: $17.550 \pm 0.011\,\text{d}$; HD 10648: $20.000 \pm 0.787\,\text{d}$). Added Target Pixel File (TPF) photocenter difference imaging (`check_tpf_centroid_motion`, `check_tpf_variable_centroid_motion`), empirically confirming HD 10528 as Tier A ($0.96\,\sigma$ SEM shift). |
+| **BUG-09** | Engines & Catalog | Discrete grid artifacts produced duplicate periods across unrelated stars (`10.64627 d` and `17.53407 d`), while the catalog lacked honest period uncertainties and centroid statuses. | Implemented fine subgrid peak zooming and FWHM $\sigma_P$ calculation; resolved grid duplicates (HD 10555: $10.962 \pm 0.406\,\text{d}$; HD 10614: $10.834 \pm 0.398\,\text{d}$; HD 10594: $17.550 \pm 0.011\,\text{d}$; HD 10648: $20.000 \pm 0.787\,\text{d}$). Added Target Pixel File (TPF) photocenter difference imaging (`check_tpf_centroid_motion`, `check_tpf_variable_centroid_motion`). |
 | **BUG-10** | `vetter.py` | Direct flux-weighted centroiding pulls toward nearby static neighbor stars when the target dims during transit, causing false $5\sigma+$ blend failures on real on-target transits. Centroid `FAIL` also prematurely condemned candidates to Tier C. | Implemented Kepler/TESS SPOC Difference Imaging ($\Delta I = I_{\text{out}} - I_{\text{in}}$) per Bryson et al. (2013), canceling static neighbor flux to zero and measuring offset against target WCS coordinates. Softened centroid `FAIL` to Tier B ("Blend Alert / Needs Manual Review") rather than Tier C. |
+| **BUG-11** | `vetter.py` / `db.py` / Catalog | TPF difference imaging returns a pixel offset (`px`), which previously overwrote the `centroid_sigma` ($\sigma$ SEM) column; missing WCS fell back to the brightest pixel (`argmax`), which would lock onto a brighter neighbor star. | Added dedicated `centroid_offset_px` column to `master_discoveries.csv` and `db.py` (`v2.3.0`), re-ran HD 10528 (`0.33 px`) and HD 10720 (`0.45 px`, `0.50 sigma`), calibrated the `PASS` threshold ($\le 0.96\,\text{px}$) to the 99th percentile of on-target injections into real TESS TPFs, and changed missing-WCS fallback to `NOT_RUN`. |
+| **BUG-12** | `injection_recovery.py` / `vetter.py` | Earlier harness used $n=3$ reps/cell at $\text{SDE} \ge 8.0$, a fixed two-sinusoid `red_noise` template (`4.2 d` and `11.5 d`) across noise runs, and tested `run_bls` without detrending or `vet_signals()`. Also, `vetter.py` line 527 used single-point `depth / noise_level > 3.0` instead of phase-folded multi-cadence transit SNR. | Upgraded harness to $n=30$ reps/cell ($750$ full-pipeline trials at $\text{SDE} \ge 10.0$) and $n=60$ genuinely independent noise baselines (random rotation frequencies/phases + stochastic $\text{AR}(1)$ granulation + TESS mid-sector gaps), running full detrending + `run_bls` + `vet_signals()` with 95% Wilson / Clopper-Pearson confidence intervals and strict $1.0\%$ fundamental period matching. Fixed `vetter.py` to use multi-cadence transit SNR $(\delta/\sigma_1)\sqrt{N_{\text{in}}}$. |
 
 ---
 
@@ -58,19 +60,22 @@ This document transparently records all retracted early pipeline classifications
 
 ## 4. Empirical Completeness Matrix & False-Alarm Rate (FAR) Calibration
 
-To replace heuristic sensitivity assumptions with empirical bounds, [`injection_recovery.py`](injection_recovery.py) evaluated synthetic transits and pure-noise baselines:
+To replace heuristic sensitivity assumptions with rigorous statistical bounds, [`injection_recovery.py`](injection_recovery.py) evaluated 750 synthetic transit light curves ($n = 30$ reps/cell) and 60 genuinely independent red+white noise baselines through the full pipeline (iterative outlier-masked Savitzky-Golay detrending $\rightarrow$ `run_bls` $\rightarrow$ `vet_signals`):
 
-### 4.1 2D Recovery Completeness Grid ($P \times \text{Depth}$)
-* **$100\%$ Recovery Floor:** Any transit signal with depth $\ge 2500\,\text{ppm}$ ($0.25\%$) is recovered at $100\%$ efficiency across all periods from $0.8\,\text{d}$ to $12.0\,\text{d}$.
-* **Moderate Depth ($1000\,\text{ppm}$):** $100\%$ recovery for $P \le 7.0\,\text{d}$; $67\%$ recovery at $P = 12.0\,\text{d}$ due to fewer in-transit cadences in a 27.4-day sector.
-* **Shallow Dips ($500\,\text{ppm}$):** $100\%$ at $P = 0.8\,\text{d}$ (many transit cycles), $33\%$ at $P = 1.5\,\text{d}$, and $0\%$ at $P \ge 3.5\,\text{d}$ (approaching the single-sector TESS pink noise ceiling).
+### 4.1 2D Full-Pipeline Recovery Completeness Grid ($P \times \text{Depth}$ at $\text{SDE} \ge 10.0$, $n = 30$ reps/cell)
+* **Strict Matching & Harmonic Separation:** Requires fundamental period error $\le 1.0\%$ at Tier A threshold $\text{SDE} \ge 10.0$ ($0.5\times / 2.0\times$ harmonics excluded; 95% Wilson / Clopper-Pearson confidence intervals in parentheses):
+  * **$P \in [0.8, 3.5]\,\text{d}$, $\text{Depth} \ge 1000\,\text{ppm}$:** **$100\%$ (`90–100%`)** recovery.
+  * **$P = 7.0\,\text{d}$:** **$87\%$ (`70–95%`)** at $1000\,\text{ppm}$; **$100\%$ (`90–100%`)** at $\ge 2500\,\text{ppm}$.
+  * **Shallow Dips ($500\,\text{ppm}$):** **$100\%$ (`90–100%`)** at $P = 0.8\,\text{d}$, **$67\%$ (`49–81%`)** at $P = 1.5\,\text{d}$, **$10\%$ (`3–26%`)** at $P = 3.5\,\text{d}$, and **$0\%$ (`0–10%`)** at $P \ge 7.0\,\text{d}$.
+  * **Single-Sector Cycle Gate at $P = 12.0\,\text{d}$:** Because a single $27.4\,\text{d}$ TESS sector with a $1.2\,\text{d}$ mid-sector downlink gap spans $26.2\,\text{d}$ of observed coverage ($N_{\text{cycles}} = 2.18 < 3.0$), full periodic vetting intentionally routes single-sector $P = 12.0\,\text{d}$ detections to Tier C (`UNCLASSIFIED_PERIODIC_DIP`, $0\%$ in Tier A/B). Prior to the $N_{\text{cycles}} \ge 3.0$ gate, the underlying BLS + eclipse/orbital physics recovery at $P = 12.0\,\text{d}$ is **$13\%$ (`5–30%`)** at $1000\,\text{ppm}$, **$87\%$ (`70–95%`)** at $2500\,\text{ppm}$, and **$100\%$ (`90–100%`)** at $\ge 5000\,\text{ppm}$.
 
-### 4.2 False-Alarm Rate (FAR) vs. SDE Threshold
-Evaluated across 35 independent noise realizations over the full 30,000-trial BLS search grid:
-* **Mean Noise SDE:** $8.03 \pm 0.71$ (95th percentile noise ceiling: $9.42$).
-* **$\text{SDE} \ge 6.0$:** $\text{FAR} = 100.0\%$
-* **$\text{SDE} \ge 7.0$:** $\text{FAR} = 88.6\%$
-* **$\text{SDE} \ge 8.0$:** $\text{FAR} = 45.7\%$ (without vetting filters)
-* **$\text{SDE} \ge 9.0$:** $\text{FAR} = 11.4\%$
-* **$\text{SDE} \ge 10.0$:** $\mathbf{\text{FAR} = 0.0\%}$
-* **Conclusion:** In wide blind searches without vetting, an unconstrained BLS peak reaches $\text{SDE} \sim 8 - 9$ by chance. Pristine Tier A classification strictly demands $\text{SDE} \ge 10.0$ or measured centroid confirmation, while $\text{SDE} \in [8.0, 10.0)$ requires passing secondary eclipse and duration filters.
+### 4.2 Empirical False-Alarm Rate (FAR) vs. SDE Threshold ($n = 60$ Independent Realizations)
+Evaluated across 60 genuinely independent noise realizations (randomized stellar rotation frequencies and phases + stochastic $\text{AR}(1)$ granulation red noise + white photon noise + TESS mid-sector gap):
+* **Baseline Noise SDE:** Mean $= 5.50$, 95th percentile ceiling $= 7.26$.
+* **$\text{SDE} \ge 6.0$:** Raw BLS $\text{FAR} = 21.7\%$ ($13/60$, 95% CI: $13.1\text{–}33.6\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 7.0$:** Raw BLS $\text{FAR} = 6.7\%$ ($4/60$, 95% CI: $2.6\text{–}15.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 8.0$:** Raw BLS $\text{FAR} = 1.7\%$ ($1/60$, 95% CI: $0.3\text{–}8.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 9.0$:** Raw BLS $\text{FAR} = 1.7\%$ ($1/60$, 95% CI: $0.3\text{–}8.9\%$) | Post-Vetting $\text{FAR} = 1.7\%$ ($1/60$).
+* **$\text{SDE} \ge 10.0$ (Tier A Gate):** Observed $\text{FAR} = 0.0\%$ ($0/60$ false alarms; **95% one-sided Clopper-Pearson upper bound $< 4.9\%$**).
+* **Conclusion:** Rather than claiming $0/N$ trials "guarantees 0.0% false alarms," we report the exact 95% binomial upper bound ($< 4.9\%$ at $n = 60$ for $\text{SDE} \ge 10.0$).
+
