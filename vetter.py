@@ -182,11 +182,46 @@ def check_variable_centroid_motion(lc: lk.LightCurve, period: Optional[float], e
     except Exception as e:
         return "NOT_RUN", np.nan, f"NOT_RUN (Variable centroid error: {e})"
 
+def compute_difference_image_centroid(flux: np.ndarray, in_tr: np.ndarray, out_tr: np.ndarray, target_pos: Optional[Tuple[float, float]] = None) -> Tuple[str, float, str]:
+    """
+    Computes Difference Image Centroid (Bryson et al. 2013, Kepler/TESS SPOC method).
+    Isolates the exact spatial coordinates of the dimming source (I_out - I_in),
+    eliminating the flux-weighted centroid pull caused by unvarying neighboring stars.
+    """
+    img_out = np.nanmedian(flux[out_tr], axis=0)
+    img_in = np.nanmedian(flux[in_tr], axis=0)
+    diff = img_out - img_in
+    
+    mad = float(np.nanmedian(np.abs(diff - np.nanmedian(diff))) * 1.4826)
+    diff_thresh = np.where(diff > 2.0 * mad, diff, 0.0)
+    if np.nansum(diff_thresh) <= 0:
+        diff_thresh = np.maximum(0, diff)
+        
+    if np.nansum(diff_thresh) <= 0:
+        return "NOT_RUN", np.nan, "NOT_RUN (No positive difference signal in TPF)"
+        
+    y_grid, x_grid = np.mgrid[:diff.shape[0], :diff.shape[1]]
+    x_diff = float(np.sum(diff_thresh * x_grid) / np.sum(diff_thresh))
+    y_diff = float(np.sum(diff_thresh * y_grid) / np.sum(diff_thresh))
+    
+    if target_pos is None:
+        y_tar, x_tar = np.unravel_index(np.nanargmax(img_out), img_out.shape)
+        target_pos = (float(x_tar), float(y_tar))
+        
+    offset_px = float(np.sqrt((x_diff - target_pos[0])**2 + (y_diff - target_pos[1])**2))
+    
+    if offset_px <= 1.0:
+        return "PASS", round(offset_px, 2), f"PASS: Difference image centroid consistent with target ({offset_px:.2f} px offset)"
+    elif offset_px <= 1.8:
+        return "PASS_MARGINAL", round(offset_px, 2), f"NEEDS_REVIEW: Marginal difference image offset ({offset_px:.2f} px) - verify PRF"
+    else:
+        return "FAIL", round(offset_px, 2), f"FAIL: Significant difference image offset ({offset_px:.2f} px) - likely off-target blend"
+
 def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, period: Optional[float] = None) -> Tuple[str, float, str]:
     """
     Downloads Target Pixel File (TPF) from MAST and calculates in-transit vs out-of-transit
-    photocenter centroid shift significance (sigma SEM).
-    Enables empirical Tier A verification for targets with unmeasured QLP lightcurve moments.
+    difference image photocenter offset.
+    Enables empirical verification for targets with unmeasured QLP lightcurve moments.
     """
     try:
         if not target or str(target).strip() in ["", "None", "N/A", "--"]:
@@ -226,39 +261,23 @@ def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, p
         if n_in < 3 or n_out < 5:
             return "NOT_RUN", np.nan, f"NOT_RUN (Insufficient in/out TPF cadences: {n_in}/{n_out})"
             
-        n_time, n_rows, n_cols = flux.shape
-        y_grid, x_grid = np.mgrid[:n_rows, :n_cols]
-        
-        flux_sum = np.sum(flux, axis=(1, 2))
-        good_flux = flux_sum > 0
-        in_tr = in_tr & good_flux
-        out_tr = out_tr & good_flux
-        
-        x_c = np.sum(flux * x_grid, axis=(1, 2)) / flux_sum
-        y_c = np.sum(flux * y_grid, axis=(1, 2)) / flux_sum
-        
-        col_in, col_out = x_c[in_tr], x_c[out_tr]
-        row_in, row_out = y_c[in_tr], y_c[out_tr]
-        
-        d_col = abs(float(np.median(col_in) - np.median(col_out)))
-        d_row = abs(float(np.median(row_in) - np.median(row_out)))
-        
-        sem_col = float(np.sqrt(np.var(col_in, ddof=1) / n_in + np.var(col_out, ddof=1) / n_out))
-        sem_row = float(np.sqrt(np.var(row_in, ddof=1) / n_in + np.var(row_out, ddof=1) / n_out))
-        
-        sigma_col = d_col / max(1e-6, sem_col)
-        sigma_row = d_row / max(1e-6, sem_row)
-        shift_sigma = float(max(sigma_col, sigma_row))
-        
-        if shift_sigma > 3.5:
-            return "FAIL", round(shift_sigma, 2), f"FAIL: Significant TPF photocenter shift ({shift_sigma:.1f} sigma SEM) - likely blend"
-        return "PASS", round(shift_sigma, 2), f"PASS: Clean TPF photocenter ({shift_sigma:.1f} sigma SEM shift)"
+        target_pos = None
+        if hasattr(tpf, 'wcs') and tpf.wcs is not None and hasattr(tpf, 'ra') and hasattr(tpf, 'dec'):
+            try:
+                from astropy.coordinates import SkyCoord
+                px, py = tpf.wcs.world_to_pixel(SkyCoord(tpf.ra, tpf.dec, unit='deg'))
+                if np.isfinite(px) and np.isfinite(py):
+                    target_pos = (float(px), float(py))
+            except Exception:
+                pass
+                
+        return compute_difference_image_centroid(flux, in_tr, out_tr, target_pos)
     except Exception as e:
         return "NOT_RUN", np.nan, f"NOT_RUN (TPF error: {e})"
 
 def check_tpf_variable_centroid_motion(target: str, period: float, epoch: Optional[float] = None) -> Tuple[str, float, str]:
     """
-    Downloads TPF from MAST and tests peak-phase vs trough-phase photocenter stability
+    Downloads TPF from MAST and tests peak-phase vs trough-phase difference image photocenter stability
     for periodic variables without lightcurve centroid columns.
     """
     try:
@@ -297,30 +316,45 @@ def check_tpf_variable_centroid_motion(target: str, period: float, epoch: Option
         if n_peak < 10 or n_trough < 10:
             return "NOT_RUN", np.nan, "NOT_RUN (Insufficient phase cadences in TPF)"
             
-        n_time, n_rows, n_cols = flux.shape
-        y_grid, x_grid = np.mgrid[:n_rows, :n_cols]
+        # Variable Difference Image (Peak - Trough amplitude envelope)
+        img_peak = np.nanmedian(flux[peak_mask], axis=0)
+        img_trough = np.nanmedian(flux[trough_mask], axis=0)
+        diff = np.abs(img_peak - img_trough)
         
-        flux_sum = np.sum(flux, axis=(1, 2))
-        good_flux = flux_sum > 0
-        peak_mask = peak_mask & good_flux
-        trough_mask = trough_mask & good_flux
+        mad = float(np.nanmedian(np.abs(diff - np.nanmedian(diff))) * 1.4826)
+        diff_thresh = np.where(diff > 2.0 * mad, diff, 0.0)
+        if np.nansum(diff_thresh) <= 0:
+            diff_thresh = np.maximum(0, diff)
+            
+        if np.nansum(diff_thresh) <= 0:
+            return "NOT_RUN", np.nan, "NOT_RUN (No positive variable difference signal in TPF)"
+            
+        y_grid, x_grid = np.mgrid[:diff.shape[0], :diff.shape[1]]
+        x_diff = float(np.sum(diff_thresh * x_grid) / np.sum(diff_thresh))
+        y_diff = float(np.sum(diff_thresh * y_grid) / np.sum(diff_thresh))
         
-        x_c = np.sum(flux * x_grid, axis=(1, 2)) / flux_sum
-        y_c = np.sum(flux * y_grid, axis=(1, 2)) / flux_sum
+        target_pos = None
+        if hasattr(tpf, 'wcs') and tpf.wcs is not None and hasattr(tpf, 'ra') and hasattr(tpf, 'dec'):
+            try:
+                from astropy.coordinates import SkyCoord
+                px, py = tpf.wcs.world_to_pixel(SkyCoord(tpf.ra, tpf.dec, unit='deg'))
+                if np.isfinite(px) and np.isfinite(py):
+                    target_pos = (float(px), float(py))
+            except Exception:
+                pass
+                
+        if target_pos is None:
+            y_tar, x_tar = np.unravel_index(np.nanargmax(img_peak), img_peak.shape)
+            target_pos = (float(x_tar), float(y_tar))
+            
+        offset_px = float(np.sqrt((x_diff - target_pos[0])**2 + (y_diff - target_pos[1])**2))
         
-        col_p, col_tr = x_c[peak_mask], x_c[trough_mask]
-        row_p, row_tr = y_c[peak_mask], y_c[trough_mask]
-        
-        d_col = abs(float(np.median(col_p) - np.median(col_tr)))
-        d_row = abs(float(np.median(row_p) - np.median(row_tr)))
-        
-        sem_col = float(np.sqrt(np.var(col_p, ddof=1) / n_peak + np.var(col_tr, ddof=1) / n_trough))
-        sem_row = float(np.sqrt(np.var(row_p, ddof=1) / n_peak + np.var(row_tr, ddof=1) / n_trough))
-        
-        shift_sigma = float(max(d_col / max(1e-6, sem_col), d_row / max(1e-6, sem_row)))
-        if shift_sigma > 3.5:
-            return "FAIL", round(shift_sigma, 2), f"FAIL: Significant TPF variable photocenter shift ({shift_sigma:.1f} sigma SEM) - likely blend"
-        return "PASS", round(shift_sigma, 2), f"PASS: Clean TPF variable photocenter ({shift_sigma:.1f} sigma SEM shift)"
+        if offset_px <= 1.0:
+            return "PASS", round(offset_px, 2), f"PASS: Difference image centroid consistent with target ({offset_px:.2f} px offset)"
+        elif offset_px <= 1.8:
+            return "PASS_MARGINAL", round(offset_px, 2), f"NEEDS_REVIEW: Marginal difference image offset ({offset_px:.2f} px) - verify PRF"
+        else:
+            return "FAIL", round(offset_px, 2), f"FAIL: Significant difference image offset ({offset_px:.2f} px) - likely off-target blend"
     except Exception as e:
         return "NOT_RUN", np.nan, f"NOT_RUN (TPF error: {e})"
 
@@ -448,7 +482,7 @@ def assign_tier(category: str,
     if not sec_pass:
         return "C"
     if centroid_status == "FAIL":
-        return "C"
+        return "B"  # Softened to Tier B (Needs Manual Review / Possible Blend Alert) rather than automatic Tier C reject
     if sde < 8.0:
         return "C"
     if cycles < 3.0 and "SINGLE" not in category.upper() and "MICROLENSING" not in category.upper():

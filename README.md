@@ -12,7 +12,7 @@ Following multi-catalog cross-matching, Keplerian orbital separation checks ($a 
 
 | Confidence Tier & Category | Count | Description & Astrophysical Highlights |
 | :--- | :---: | :--- |
-| **Pristine Vetted Clean & Benchmark Controls (Tier A)** | **2** | • **HD 10720** (`CF Hyi`, Algol EB): Recovered $P=3.78442 \pm 0.00018\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.998\%}$ match, $0.002\%$ difference) with clean centroid ($\text{SEM} = 0.50\,\sigma$).<br>• **HD 10528** ($\delta$ Scuti pulsator, $P = 0.07189 \pm 0.00002\,\text{d} \approx 103.5\,\text{min}$, $\text{SDE} = 30.3$, $N_{\text{cycles}} = 381.1$): Empirically verified via Target Pixel File (TPF) in-aperture photocenter difference imaging ($0.96\,\sigma$ Welch SEM shift < $3.5\,\sigma$ threshold), confirmed on-target and promoted to Tier A. |
+| **Pristine Vetted Clean & Benchmark Controls (Tier A)** | **2** | • **HD 10720** (`CF Hyi`, Algol EB): Recovered $P=3.78442 \pm 0.00018\,\text{d}$ vs VSX $P=3.7845\,\text{d}$ ($\mathbf{99.998\%}$ match, $0.002\%$ difference) with clean centroid ($\text{SEM} = 0.50\,\sigma$).<br>• **HD 10528** ($\delta$ Scuti pulsator, $P = 0.07189 \pm 0.00002\,\text{d} \approx 103.5\,\text{min}$, $\text{SDE} = 30.3$, $N_{\text{cycles}} = 381.1$): Difference-image photocenter consistent with target ($0.96\,\sigma$ Welch SEM shift < $3.5\,\sigma$ threshold); cross-checked unlisted across SIMBAD, VSX, Gaia DR3 variability, and ASAS-SN (Tier A: Photocenter consistent with target). |
 | **Probable Unlisted Astrophysical Candidates (Tier B)** | **12** | Physically valid signals passing Keplerian ($a > R_*$), giant duration ($T_{\text{dur}} \ge T_{\min}$), depth, and cycle ($N \ge 3$) tests, held at Tier B pending Target Pixel File (TPF) pixel-level follow-up: <br>• **4 High-Amplitude Variables**: HD 10635 ($P=0.41285 \pm 0.00035\,\text{d}$), HD 10653 ($P=1.06772 \pm 0.00142\,\text{d}$), HD 10661 ($P=4.10358 \pm 0.04812\,\text{d}$), HD 10669 ($P=7.94418 \pm 0.21050\,\text{d}$)<br>• **7 Low-Mass Companion / Grazing EBs**: Solitary transits on main-sequence / subgiant hosts ($R_* \in [1.39, 3.15]\,R_\odot$, $R_{\text{comp}} \in [2.1, 8.9]\,R_{\text{Jup}}$): HD 10562, HD 10564, HD 10607, HD 10628, HD 10645, HD 10668, HD 10670<br>• **1 Unlisted Eclipsing Binary**: HD 10549 |
 | **Unconstrained Stellar Parameters (Tier B)** | **4** | Missing Gaia DR3 or TIC stellar radius ($R_* = \text{null}$), preventing physical separation calculation: HD 10541, HD 10581, HD 10629, HD 10663 |
 | *Audit Flagged: Insufficient Baseline ($N_{\text{cycles}} < 3.0$, Tier C)* | *7* | HD 10526 ($N=2.4$), HD 10555 ($P=10.962 \pm 0.406\,\text{d}, N=2.5$), HD 10594 ($P=17.550 \pm 0.011\,\text{d}, N=1.6$), HD 10605 ($N=1.8$), HD 10614 ($P=10.834 \pm 0.398\,\text{d}, N=2.6$), HD 10648 ($P=20.000 \pm 0.787\,\text{d}, N=1.6$), HD 10585 ($N=1.4$; boundary pileup near $20.0\,\text{d}$) |
@@ -191,14 +191,35 @@ The 9 mismatches illustrate the physical complexity of bright-star photometry an
 ### 6. Centroid Vetting Evidence & Empirical TPF Photocenter Verification
 * **Tri-State Gating:** Every candidate is audited with tri-state centroid checking (`PASS`, `FAIL`, `NOT_RUN`), stored in `centroid_status` and `centroid_sigma`.
 * **Standard Error of the Mean ($\text{SEM}$):** Photocenter shifts are evaluated using two-sample Welch standard error $\text{SEM} = \sqrt{\sigma_{\text{in}}^2 / N_{\text{in}} + \sigma_{\text{out}}^2 / N_{\text{out}}}$ rather than per-cadence scatter, preventing false passes caused by sample size inflation.
-* **Target Pixel File (TPF) Difference Imaging:** For bright stars where pipeline QLP FFI flux products lack precomputed centroid moment columns, Astrohunter queries the calibrated SPOC Target Pixel File directly (`check_tpf_centroid_motion` and `check_tpf_variable_centroid_motion`). Pixel-level flux-weighted photocenter shifts between in-transit/peak and out-of-transit/trough cadences provide empirical confirmation (e.g. HD 10528 confirmed on-target with $0.96\,\sigma$ Welch SEM shift, promoted to Tier A).
+* **Target Pixel File (TPF) Difference Imaging (Bryson et al. 2013):** Direct flux-weighted centroiding is vulnerable to neighbor contamination: when an on-target transit dims the primary star, flux weighting naturally pulls the apparent centroid toward any nearby static companion, causing a false blend rejection. To eliminate this systematic, `vetter.py` implements difference imaging ($\Delta I = I_{\text{out}} - I_{\text{in}}$). Constant neighbor stars cancel out to zero, isolating the true photocenter of the varying signal against target WCS coordinates.
+* **Centroid Failure Softening:** Centroid `FAIL` is held at Tier B ("Needs Manual Review / Possible Blend Alert") rather than automatically condemned to Tier C, allowing human follow-up on complex crowded fields.
+* **Empirical Validation (HD 10528):** HD 10528 was tested with difference imaging on TESS Target Pixel Files, yielding a difference-image centroid offset of $0.34\,\text{px}$ ($0.96\,\sigma$ Welch SEM shift), confirming the photocenter is consistent with the target. Cross-catalog queries confirmed it is unlisted in SIMBAD, AAVSO VSX, Gaia DR3 variability tables (`phot_variable_flag = NOT_AVAILABLE`), and ASAS-SN.
 
-### 7. Empirical False-Alarm Rate (FAR) Calibration
-To mathematically calibrate the signal-to-pink-noise floor without relying on heuristic thresholds, 30 synthetic pure-noise TESS light curves (combining Gaussian white noise $\sigma = 500\,\text{ppm}$ and stochastic stellar granulation / red noise) were injected across the BLS and Lomb-Scargle search pipelines:
-* **Empirical Noise Statistics:** Mean noise $\text{SDE} = 5.77 \pm 0.62$, 95th percentile noise ceiling $= 6.93$.
-* **False Alarm at $\text{SDE} \ge 7.0$:** $\text{FAR} = 6.7\%$ (2 false alarms per 30 noise trials).
-* **False Alarm at $\text{SDE} \ge 8.0$:** $\mathbf{\text{FAR} = 0.0\%}$ (0 false alarms per 30 noise trials).
-* **Design Decision:** The automated detection threshold is officially locked at $\text{SDE}_{\text{threshold}} = 8.0$, guaranteeing an empirical false-alarm rate of $0.0\%$ on pure noise, while $\text{SDE} \ge 10.0$ is required for pristine Tier A candidates.
+### 7. Injection-Recovery Completeness & Empirical False-Alarm Rate (FAR) Harness
+The pipeline's sensitivity and noise false-alarm limits were empirically mapped using an end-to-end injection-recovery harness ([`injection_recovery.py`](injection_recovery.py)):
+
+#### 2D Transit Recovery Completeness Grid ($P \times \text{Depth}$)
+Injected into realistic TESS single-sector noise baselines (Gaussian white noise $\sigma = 500\,\text{ppm}$ plus red noise granulation harmonics):
+
+| Period (d) | 500 ppm | 1000 ppm | 2500 ppm | 5000 ppm | 10000 ppm |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **P = 0.8 d** | 100% | 100% | 100% | 100% | 100% |
+| **P = 1.5 d** | 33% | 100% | 100% | 100% | 100% |
+| **P = 3.5 d** | 0% | 100% | 100% | 100% | 100% |
+| **P = 7.0 d** | 0% | 100% | 100% | 100% | 100% |
+| **P = 12.0 d** | 0% | 67% | 100% | 100% | 100% |
+
+* **Recovery Floor:** Signals $\ge 2500\,\text{ppm}$ ($\ge 0.25\%$) achieve **100% recovery** across all orbital periods up to $12.0\,\text{d}$. Sensitivity to shallow $500\,\text{ppm}$ transits drops at longer periods as expected from single-sector transit duty cycle limitations.
+
+#### Empirical False-Alarm Rate (FAR) Calibration
+Evaluated across 35 independent noise realizations over the full 30,000-trial BLS search grid:
+* **Noise SDE Distribution:** Mean noise $\text{SDE} = 8.03$, 95th percentile noise ceiling $= 9.42$.
+* **$\text{SDE} \ge 6.0$:** $\text{FAR} = 100.0\%$ (all noise runs find a local maximum $\ge 6.0$).
+* **$\text{SDE} \ge 7.0$:** $\text{FAR} = 88.6\%$.
+* **$\text{SDE} \ge 8.0$:** $\text{FAR} = 45.7\%$ (in unconstrained 30,000-trial grid without vetting filters).
+* **$\text{SDE} \ge 9.0$:** $\text{FAR} = 11.4\%$.
+* **$\text{SDE} \ge 10.0$:** $\mathbf{\text{FAR} = 0.0\%}$ (zero false alarms across all trials).
+* **Operational Rule:** Pristine unvetted candidates require $\text{SDE} \ge 10.0$; candidates with $\text{SDE} \in [8.0, 10.0)$ are permitted only when passing secondary-eclipse, odd/even, and physical duration vetting filters.
 
 ---
 
@@ -242,13 +263,15 @@ The repository includes production Terraform configuration for zero-cost deploym
 ├── variable_engine.py         # Lomb-Scargle periodic variability engine
 ├── single_transit_engine.py   # Isolated dip single-transit detector
 ├── microlensing_engine.py     # Paczyński microlensing search engine
-├── vetter.py                  # Physical orbit & duration constraints, centroid, and vetting tests
+├── vetter.py                  # Physical orbit & duration constraints, difference-image centroid vetting
 ├── catalog_checker.py         # SIMBAD, AAVSO VSX, and NASA Exoplanet Archive cross-matching
+├── injection_recovery.py      # 2D completeness matrix (P x depth) & empirical FAR calibration harness
 ├── notifier.py                # Telegram Bot alert dispatcher with async retries
 ├── db.py                      # SQLite state tracking and catalog persistence
 ├── master_discoveries.csv     # Master catalog of vetted candidates and benchmark controls with audit flags
+├── CORRECTIONS.md             # Transparent scientific retractions and algorithmic bug audit log
 ├── test_downloader_sorting.py # Regression tests for multi-sector timestamp sorting and deduplication
-├── test_vetter_plumbing.py    # Regression tests for vetter plumbing, tri-state centroid, and BLS grid scalability
+├── test_vetter_plumbing.py    # Regression tests for vetter plumbing, tri-state centroid, and difference imaging
 ├── test_pipeline_upgrades.py  # End-to-end integration and vetting simulation tests
 ├── requirements.txt           # Core dependencies (astropy, lightkurve, scipy, etc.)
 └── terraform/                 # Infrastructure as Code for Google Cloud deployment

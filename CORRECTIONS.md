@@ -41,6 +41,7 @@ This document transparently records all retracted early pipeline classifications
 | **BUG-07** | `vetter.py` | In `vet_signals()`, the BLS branch required `... and centroid_pass` for exoplanet candidates. When centroid was unmeasured (`NOT_RUN`), `centroid_pass` was `False`, causing clean planet candidates to be mislabeled as `ECLIPSING_BINARY`. | Changed condition to `centroid_status != "FAIL"`. Unmeasured centroids now classify as `CANDIDATE_EXOPLANET` and are gated to Tier B by `assign_tier()`. |
 | **BUG-08** | `main.py` | `process_target()` line 71 returned early if status was not `["PENDING", "PROCESSING"]`, preventing targets with transient download errors from ever being retried. | Added `"DOWNLOAD_ERROR"` to the allowable retry states in `main.py`, `serverless_entry()`, and `run_local_scan()`. |
 | **BUG-09** | Engines & Catalog | Discrete grid artifacts produced duplicate periods across unrelated stars (`10.64627 d` and `17.53407 d`), while the catalog lacked honest period uncertainties and centroid statuses. | Implemented fine subgrid peak zooming and FWHM $\sigma_P$ calculation; resolved grid duplicates (HD 10555: $10.962 \pm 0.406\,\text{d}$; HD 10614: $10.834 \pm 0.398\,\text{d}$; HD 10594: $17.550 \pm 0.011\,\text{d}$; HD 10648: $20.000 \pm 0.787\,\text{d}$). Added Target Pixel File (TPF) photocenter difference imaging (`check_tpf_centroid_motion`, `check_tpf_variable_centroid_motion`), empirically confirming HD 10528 as Tier A ($0.96\,\sigma$ SEM shift). |
+| **BUG-10** | `vetter.py` | Direct flux-weighted centroiding pulls toward nearby static neighbor stars when the target dims during transit, causing false $5\sigma+$ blend failures on real on-target transits. Centroid `FAIL` also prematurely condemned candidates to Tier C. | Implemented Kepler/TESS SPOC Difference Imaging ($\Delta I = I_{\text{out}} - I_{\text{in}}$) per Bryson et al. (2013), canceling static neighbor flux to zero and measuring offset against target WCS coordinates. Softened centroid `FAIL` to Tier B ("Blend Alert / Needs Manual Review") rather than Tier C. |
 
 ---
 
@@ -52,3 +53,24 @@ This document transparently records all retracted early pipeline classifications
   * 3 fundamental recoveries ($1.0\times$): HD 10720 ($0.03\%$ difference), HD 10502 ($1.000\times$), HD 10081 ($1.001\times$).
   * 1 harmonic recovery ($2.0\times$): HD 10040 ($1.998\times$, contact binary).
 * **External Control:** WASP-126 b ($1.000\times$) is reported as an external non-HD instrument control and strictly excluded from the HD survey denominator.
+
+---
+
+## 4. Empirical Completeness Matrix & False-Alarm Rate (FAR) Calibration
+
+To replace heuristic sensitivity assumptions with empirical bounds, [`injection_recovery.py`](injection_recovery.py) evaluated synthetic transits and pure-noise baselines:
+
+### 4.1 2D Recovery Completeness Grid ($P \times \text{Depth}$)
+* **$100\%$ Recovery Floor:** Any transit signal with depth $\ge 2500\,\text{ppm}$ ($0.25\%$) is recovered at $100\%$ efficiency across all periods from $0.8\,\text{d}$ to $12.0\,\text{d}$.
+* **Moderate Depth ($1000\,\text{ppm}$):** $100\%$ recovery for $P \le 7.0\,\text{d}$; $67\%$ recovery at $P = 12.0\,\text{d}$ due to fewer in-transit cadences in a 27.4-day sector.
+* **Shallow Dips ($500\,\text{ppm}$):** $100\%$ at $P = 0.8\,\text{d}$ (many transit cycles), $33\%$ at $P = 1.5\,\text{d}$, and $0\%$ at $P \ge 3.5\,\text{d}$ (approaching the single-sector TESS pink noise ceiling).
+
+### 4.2 False-Alarm Rate (FAR) vs. SDE Threshold
+Evaluated across 35 independent noise realizations over the full 30,000-trial BLS search grid:
+* **Mean Noise SDE:** $8.03 \pm 0.71$ (95th percentile noise ceiling: $9.42$).
+* **$\text{SDE} \ge 6.0$:** $\text{FAR} = 100.0\%$
+* **$\text{SDE} \ge 7.0$:** $\text{FAR} = 88.6\%$
+* **$\text{SDE} \ge 8.0$:** $\text{FAR} = 45.7\%$ (without vetting filters)
+* **$\text{SDE} \ge 9.0$:** $\text{FAR} = 11.4\%$
+* **$\text{SDE} \ge 10.0$:** $\mathbf{\text{FAR} = 0.0\%}$
+* **Conclusion:** In wide blind searches without vetting, an unconstrained BLS peak reaches $\text{SDE} \sim 8 - 9$ by chance. Pristine Tier A classification strictly demands $\text{SDE} \ge 10.0$ or measured centroid confirmation, while $\text{SDE} \in [8.0, 10.0)$ requires passing secondary eclipse and duration filters.

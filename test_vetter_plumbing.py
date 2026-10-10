@@ -69,7 +69,7 @@ def test_centroid_and_tier_gatekeeping():
     )
     assert tier_not_run == "B", f"Expected NOT_RUN centroid to be capped at Tier B, got {tier_not_run}"
     
-    # Case 2: Centroid FAIL must be Tier C
+    # Case 2: Centroid FAIL is gated to Tier B (Needs Manual Review / Possible Blend Alert) rather than automatic Tier C reject
     tier_fail = assign_tier(
         category="CANDIDATE_EXOPLANET",
         sde=15.0,
@@ -80,7 +80,7 @@ def test_centroid_and_tier_gatekeeping():
         orbit_pass=True,
         dur_pass=True
     )
-    assert tier_fail == "C", f"Expected FAIL centroid to be Tier C, got {tier_fail}"
+    assert tier_fail == "B", f"Expected FAIL centroid to be gated to Tier B (needs manual review), got {tier_fail}"
     
     # Case 3: Measured PASS with all criteria met achieves Tier A
     tier_pass = assign_tier(
@@ -178,6 +178,42 @@ def test_unmeasured_centroid_planet_classification():
     assert res.get("centroid_status") == "NOT_RUN", f"Expected NOT_RUN centroid status, got {res.get('centroid_status')}"
     print("  -> Passed: Clean transit with unmeasured centroid is CANDIDATE_EXOPLANET at Tier B (not ECLIPSING_BINARY).")
 
+# 8. Test Difference Image Centroid on contaminated on-target transits and blends
+def test_difference_image_centroid_benchmarks():
+    print("Test 8: Testing Difference Image Centroid on contaminated neighbor & blend benchmarks...")
+    from vetter import compute_difference_image_centroid
+    
+    n_cad = 500
+    np.random.seed(42)
+    t = np.linspace(0, 10, n_cad)
+    y_grid, x_grid = np.mgrid[:11, :11]
+    
+    target_prf = np.exp(-((x_grid - 5)**2 + (y_grid - 5)**2) / 2.0)
+    target_prf /= np.sum(target_prf)
+    
+    neighbor_prf = np.exp(-((x_grid - 8)**2 + (y_grid - 5)**2) / 2.0)
+    neighbor_prf /= np.sum(neighbor_prf)
+    
+    in_tr = (t > 4.5) & (t < 5.5)
+    out_tr = (t < 4.0) | (t > 6.0)
+    
+    # Benchmark Case 1: Isolated on-target 1% transit
+    cube_iso = np.array([(1000.0 * (0.99 if in_tr[i] else 1.0) * target_prf + np.random.normal(0, 1.0, (11, 11))) for i in range(n_cad)])
+    st1, off1, _ = compute_difference_image_centroid(cube_iso, in_tr, out_tr, target_pos=(5.0, 5.0))
+    assert st1 == "PASS" and off1 < 0.6, f"Expected PASS on isolated transit, got {st1} ({off1} px)"
+    
+    # Benchmark Case 2: On-target 1% transit with 40% neighbor 3 px away (immune to centroid pull)
+    cube_contam = np.array([(1000.0 * (0.99 if in_tr[i] else 1.0) * target_prf + 400.0 * neighbor_prf + np.random.normal(0, 1.0, (11, 11))) for i in range(n_cad)])
+    st2, off2, _ = compute_difference_image_centroid(cube_contam, in_tr, out_tr, target_pos=(5.0, 5.0))
+    assert st2 == "PASS" and off2 < 0.5, f"Expected PASS on contaminated on-target transit, got {st2} ({off2} px)"
+    
+    # Benchmark Case 3: Constant target with 5% eclipse on neighbor (true blend)
+    cube_blend = np.array([(1000.0 * target_prf + 400.0 * (0.95 if in_tr[i] else 1.0) * neighbor_prf + np.random.normal(0, 1.0, (11, 11))) for i in range(n_cad)])
+    st3, off3, _ = compute_difference_image_centroid(cube_blend, in_tr, out_tr, target_pos=(5.0, 5.0))
+    assert st3 == "FAIL" and off3 > 1.8, f"Expected FAIL on neighbor blend, got {st3} ({off3} px)"
+    
+    print("  -> Passed: Difference Image Centroid correctly passes contaminated on-target transits and flags neighbor blends.")
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -186,4 +222,5 @@ if __name__ == "__main__":
     test_bls_grid_multi_year_scalability()
     test_download_error_retry()
     test_unmeasured_centroid_planet_classification()
-    print("\n=== ALL 7 PLUMBING, RETRY & VETTING TESTS PASSED! ===")
+    test_difference_image_centroid_benchmarks()
+    print("\n=== ALL 8 PLUMBING, RETRY, CENTROID & VETTING TESTS PASSED! ===")
