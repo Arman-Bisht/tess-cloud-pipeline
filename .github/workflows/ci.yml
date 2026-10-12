@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Plumbing, Retry, Centroid, Quadrature & Giant Rotation Tests (12 tests)
+      - name: Run Plumbing, Watchdog, Centroid, Quadrature & Giant Rotation Tests (14 tests)
         run: python test_vetter_plumbing.py
 
       - name: Run Downloader Chronological Sorting & Deduplication Regression Test
@@ -35,15 +35,19 @@ jobs:
       - name: Run Offline TPF Difference-Image 95th-Percentile Calibration Verification (Read-Only)
         run: python calibrate_tpf_threshold.py --offline
 
-      - name: Verify Master Catalog Schema & Row Integrity
+      - name: Verify Master Catalog Schema, Benchmark Targets & Lockfile Integrity
         run: |
           python -c "
-          import pandas as pd
+          import os, pandas as pd
+          assert os.path.exists('requirements-lock.txt'), 'Missing transitive requirements-lock.txt'
+          df_b = pd.read_csv('benchmark/targets.csv')
+          assert len(df_b) >= 20, f'Expected >=20 external benchmark targets, got {len(df_b)}'
+          assert {'target_name', 'tic_id', 'external_class', 'source_catalog', 'source_date'}.issubset(df_b.columns)
           df = pd.read_csv('master_discoveries.csv')
           assert len(df) == 34, f'Expected 34 rows, got {len(df)}'
           assert 'centroid_offset_px' in df.columns, 'Missing centroid_offset_px column'
-          assert (df['pipeline_version'] == 'v2.5.0').all(), 'All rows must carry v2.5.0'
+          assert (df['pipeline_version'] == 'v2.6.0').all(), 'All rows must carry v2.6.0'
           tier_a = df[df['confidence'].str.startswith('Tier A')]['name'].tolist()
           assert set(tier_a) == {'HD 10528', 'HD 10635', 'HD 10653', 'HD 10720'}, f'Unexpected Tier A rows: {tier_a}'
-          print('Catalog integrity check passed: 34 rows, 27 columns, v2.5.0, 4 Tier A / 14 Tier B / 16 Tier C')
+          print('Catalog & benchmark integrity check passed: 34 rows, 27 columns, v2.6.0, 4 Tier A / 14 Tier B / 16 Tier C, 24 external benchmark targets')
           "

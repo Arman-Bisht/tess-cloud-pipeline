@@ -161,22 +161,29 @@ def process_target(tic_id: str):
 
 PER_TARGET_TIMEOUT_SECONDS = 180
 
-def run_target_with_watchdog(tic_id: str, timeout_sec: float = PER_TARGET_TIMEOUT_SECONDS):
+def run_target_with_watchdog(tic_id: str, timeout_sec: float = PER_TARGET_TIMEOUT_SECONDS, target_fn=None) -> bool:
     """
     Executes process_target(tic_id) under a strict per-target watchdog timeout.
-    If MAST or a downstream socket hangs beyond timeout_sec, marks the target
-    DOWNLOAD_ERROR, purges partial cache, and prevents batch/Cloud Run starvation.
+    Uses shutdown(wait=False, cancel_futures=True) rather than a `with` context manager
+    (whose __exit__ calls shutdown(wait=True) and would block on a hung thread).
+    Returns True if completed within timeout_sec, False if timed out or errored.
     """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as watchdog_pool:
-        fut = watchdog_pool.submit(process_target, tic_id)
-        try:
-            fut.result(timeout=timeout_sec)
-        except concurrent.futures.TimeoutError:
-            logger.error(f"Watchdog timeout ({timeout_sec}s) exceeded for {tic_id}; marking DOWNLOAD_ERROR.")
-            update_status(tic_id, "DOWNLOAD_ERROR")
-            purge_cache_for_target(tic_id)
-        except Exception as e:
-            logger.error(f"Error processing {tic_id}: {e}")
+    fn = target_fn if target_fn is not None else process_target
+    watchdog_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    fut = watchdog_pool.submit(fn, tic_id)
+    try:
+        fut.result(timeout=timeout_sec)
+        return True
+    except concurrent.futures.TimeoutError:
+        logger.error(f"Watchdog timeout ({timeout_sec}s) exceeded for {tic_id}; marking DOWNLOAD_ERROR.")
+        update_status(tic_id, "DOWNLOAD_ERROR")
+        purge_cache_for_target(tic_id)
+        return False
+    except Exception as e:
+        logger.error(f"Error processing {tic_id}: {e}")
+        return False
+    finally:
+        watchdog_pool.shutdown(wait=False, cancel_futures=True)
 
 def serverless_entry(request):
     """HTTP Cloud Function entry point."""
@@ -209,11 +216,11 @@ def serverless_entry(request):
 
     logger.info(f"Processing batch of {len(targets_to_process)} targets with {workers} workers...")
     
-    # 3. Process Batch with per-target timeout protection
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+    # 3. Process Batch with non-blocking per-target timeout protection
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+    try:
         futures = {executor.submit(process_target, tic): tic for tic in targets_to_process}
-        for future in concurrent.futures.as_completed(futures):
-            tic = futures[future]
+        for future, tic in list(futures.items()):
             try:
                 future.result(timeout=PER_TARGET_TIMEOUT_SECONDS)
             except concurrent.futures.TimeoutError:
@@ -222,6 +229,8 @@ def serverless_entry(request):
                 purge_cache_for_target(tic)
             except Exception as e:
                 logger.error(f"Error processing {tic}: {e}")
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
                 
     # 4. Push persistent state
     upload_db()
@@ -273,10 +282,10 @@ def run_local_scan(start_hd: Optional[int] = None,
     logger.info(f"Identified {len(unprocessed)} targets to search in this run.")
     
     if workers > 1:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+        try:
             futures = {executor.submit(process_target, tic): tic for tic in unprocessed}
-            for future in concurrent.futures.as_completed(futures):
-                tic = futures[future]
+            for future, tic in list(futures.items()):
                 try:
                     future.result(timeout=PER_TARGET_TIMEOUT_SECONDS)
                 except concurrent.futures.TimeoutError:
@@ -285,6 +294,8 @@ def run_local_scan(start_hd: Optional[int] = None,
                     purge_cache_for_target(tic)
                 except Exception as e:
                     logger.error(f"Error processing {tic}: {e}")
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
     else:
         for idx, tic in enumerate(unprocessed, 1):
             logger.info(f"[{idx}/{len(unprocessed)}] Scanning {tic}...")

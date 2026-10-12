@@ -183,7 +183,7 @@ def save_discovery(tic_id: str,
     centroid_sigma = metrics.get('centroid_shift_sigma', np.nan)
     centroid_offset_px = metrics.get('centroid_offset_px', np.nan)
     centroid_desc = metrics.get('centroid_desc', 'Passed')
-    pipeline_version = "v2.5.0"
+    pipeline_version = "v2.6.0"
     
     cursor.execute('''
     INSERT INTO signals (

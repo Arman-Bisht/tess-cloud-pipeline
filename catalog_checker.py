@@ -13,10 +13,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Enforce network timeouts across MAST TIC, SIMBAD, and Vizier queries
-CATALOG_TIMEOUT_SECONDS = 25
+CATALOG_TIMEOUT_SECONDS = 30
 socket.setdefaulttimeout(CATALOG_TIMEOUT_SECONDS)
 try:
     Catalogs.TIMEOUT = CATALOG_TIMEOUT_SECONDS
+    Simbad.TIMEOUT = CATALOG_TIMEOUT_SECONDS
+    Vizier.TIMEOUT = CATALOG_TIMEOUT_SECONDS
 except Exception:
     pass
 

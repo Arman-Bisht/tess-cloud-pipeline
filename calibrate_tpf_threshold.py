@@ -384,7 +384,7 @@ def run_tpf_threshold_calibration(offline: bool = False) -> Dict[str, Any]:
         for phi_0 in (0.0, 0.25, 0.50, 0.75):
             mod_nb = (0.015 * peak_val) * np.sin(2.0 * np.pi * (t / 2.4 + phi_0))[:, None, None] * nb_prf[None, :, :]
             st_b, off_b, _ = compute_variable_difference_image_centroid(
-                t, base_flux + mod_nb, 2.4, target_pos=wcs_pos
+                t, base_flux + mod_nb, 2.4, target_pos=wcs_pos, expected_amp=0.015
             )
             blend_checks.append({
                 "name": cube_info["name"],

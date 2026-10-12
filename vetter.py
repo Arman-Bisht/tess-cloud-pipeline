@@ -284,16 +284,22 @@ def compute_variable_difference_image_centroid(
 ) -> Tuple[str, float, str]:
     """
     Computes phase-aligned peak-minus-trough difference image photocenter for a periodic variable.
+    - Requires mandatory `expected_amp > 0` (returns `NOT_RUN` when omitted or non-positive).
     - Evaluates 8 trial phase origins phi_k = k/8 in [0, 1) using robust per-pixel median difference
       (`img_peak - img_trough`) normalized by per-pixel temporal MAD (`pixel_mad`), selecting the
       phase alignment that maximizes periodic difference SNR across all phases phi_0 in [0, 1)
       (including exact quadrature phi_0 = 0.25 and 0.75).
-    - Enforces folded amplitude coherence against expected_amp when provided.
+    - Enforces a 5.0-sigma spatial significance gate AND a 5.0-sigma temporal 3x3 peak-box
+      significance gate BEFORE evaluating `offset_px`, ensuring signal-free TPFs with pointing
+      drift/jitter return `NOT_RUN` rather than false `FAIL` or `PASS_MARGINAL`.
+    - Enforces folded amplitude coherence against `expected_amp` in the 3x3 target aperture.
     - Compares measured offset against both the 95th-percentile pooled ceiling (0.96 px) and
       the star's own local injection null ceiling (`per_star_ceiling_px`).
     """
     if target_pos is None:
         return "NOT_RUN", np.nan, "NOT_RUN (Missing valid WCS target coordinates)"
+    if expected_amp is None or not np.isfinite(expected_amp) or expected_amp <= 0:
+        return "NOT_RUN", np.nan, "NOT_RUN (Missing or non-positive expected_amp for variable TPF check)"
     if period is None or period <= 0 or len(t) < 30:
         return "NOT_RUN", np.nan, "NOT_RUN (Insufficient valid cadences or period)"
 
@@ -323,13 +329,27 @@ def compute_variable_difference_image_centroid(
             best_peak_mask = peak_mask
             best_trough_mask = trough_mask
 
-    if best_diff is None:
+    if best_diff is None or best_peak_mask is None or best_trough_mask is None:
         return "NOT_RUN", np.nan, "NOT_RUN (Insufficient phase cadences in TPF)"
 
     diff = best_diff
     mad = float(np.nanmedian(np.abs(diff - np.nanmedian(diff))) * 1.4826)
-    if float(np.nanmax(diff)) < 2.5 * max(mad, 1e-9):
-        return "NOT_RUN", np.nan, "NOT_RUN (No statistically significant periodic modulation in TPF)"
+    if float(np.nanmax(diff)) < 5.0 * max(mad, 1e-9):
+        return "NOT_RUN", np.nan, "NOT_RUN (No statistically significant >=5-sigma spatial modulation in TPF)"
+
+    # Temporal 5-sigma significance gate on the 3x3 box around the peak difference pixel
+    # (cancels dipole residuals from pointing drift across a static star before offset evaluation)
+    pr, pc = np.unravel_index(int(np.nanargmax(diff)), diff.shape)
+    by0, by1 = max(0, pr - 1), min(flux.shape[1], pr + 2)
+    bx0, bx1 = max(0, pc - 1), min(flux.shape[2], pc + 2)
+    box_det = np.nansum(flux_det[:, by0:by1, bx0:bx1], axis=(1, 2))
+    box_mad = float(np.nanmedian(np.abs(box_det - np.nanmedian(box_det))) * 1.4826)
+    n_pk = max(1, int(np.sum(best_peak_mask)))
+    n_tr = max(1, int(np.sum(best_trough_mask)))
+    box_se = max(1e-9, 1.2533 * box_mad * float(np.sqrt(1.0 / n_pk + 1.0 / n_tr)))
+    box_diff = float(np.nanmedian(box_det[best_peak_mask]) - np.nanmedian(box_det[best_trough_mask]))
+    if box_diff / box_se < 5.0:
+        return "NOT_RUN", np.nan, f"NOT_RUN (TPF 3x3 peak box modulation SNR={box_diff/box_se:.1f} < 5.0 sigma)"
 
     diff_thresh = np.where(diff > 2.0 * mad, diff, 0.0)
     if np.nansum(diff_thresh) <= 0:
@@ -354,24 +374,26 @@ def compute_variable_difference_image_centroid(
             f"NEEDS_REVIEW: Offset ({offset_px:.2f} px) exceeds star's own TPF injection ceiling ({per_star_ceiling_px:.2f} px)",
         )
 
-    # Amplitude coherence check in 3x3 target aperture when expected_amp is provided
-    if expected_amp is not None and np.isfinite(expected_amp) and expected_amp > 0:
-        cy, cx = int(round(target_pos[1])), int(round(target_pos[0]))
-        y0, y1 = max(0, cy - 1), min(flux.shape[1], cy + 2)
-        x0, x1 = max(0, cx - 1), min(flux.shape[2], cx + 2)
-        ap_raw = np.nansum(flux[:, y0:y1, x0:x1], axis=(1, 2))
-        ap_med = float(np.nanmedian(ap_raw))
-        if ap_med > 0 and best_peak_mask is not None and best_trough_mask is not None:
-            ap_det = np.nansum(flux_det[:, y0:y1, x0:x1], axis=(1, 2))
-            ap_p2p = float(abs(np.nanmedian(ap_det[best_peak_mask]) - np.nanmedian(ap_det[best_trough_mask])) / ap_med)
-            if ap_p2p < 0.25 * (2.0 * expected_amp):
-                return (
-                    "PASS_MARGINAL",
-                    round(offset_px, 2),
-                    f"NEEDS_REVIEW: TPF folded amplitude ({ap_p2p*100:.3f}%) below expected lightcurve amplitude ({2*expected_amp*100:.3f}%)",
-                )
+    # Amplitude coherence check in 3x3 target aperture against mandatory expected_amp
+    cy, cx = int(round(target_pos[1])), int(round(target_pos[0]))
+    y0, y1 = max(0, cy - 1), min(flux.shape[1], cy + 2)
+    x0, x1 = max(0, cx - 1), min(flux.shape[2], cx + 2)
+    ap_raw = np.nansum(flux[:, y0:y1, x0:x1], axis=(1, 2))
+    ap_med = float(np.nanmedian(ap_raw))
+    if ap_med > 0:
+        ap_det = np.nansum(flux_det[:, y0:y1, x0:x1], axis=(1, 2))
+        ap_p2p = float(abs(np.nanmedian(ap_det[best_peak_mask]) - np.nanmedian(ap_det[best_trough_mask])) / ap_med)
+        if ap_p2p < 0.25 * (2.0 * expected_amp):
+            return (
+                "PASS_MARGINAL",
+                round(offset_px, 2),
+                f"NEEDS_REVIEW: TPF folded amplitude ({ap_p2p*100:.3f}%) below expected lightcurve amplitude ({2*expected_amp*100:.3f}%)",
+            )
 
     return "PASS", round(offset_px, 2), f"PASS: Difference image centroid consistent with target ({offset_px:.2f} px offset)"
+
+
+_PER_STAR_NULL_CACHE: Dict[Tuple, Dict[str, float]] = {}
 
 
 def compute_per_star_tpf_null(
@@ -379,14 +401,29 @@ def compute_per_star_tpf_null(
     flux: np.ndarray,
     target_pos: Tuple[float, float],
     mode: str = "transit",
-    n_trials: int = 16,
+    n_trials: int = 50,
     seed: int = 20261010,
 ) -> Dict[str, float]:
     """
     Computes the star-specific on-target injection null distribution directly on the target's
-    own TPF `(t, flux)` around `target_pos` (with 0.12 px pointing/WCS jitter).
+    own TPF `(t, flux)` around `target_pos` (with 0.12 px pointing/WCS jitter) across `n_trials=50`
+    trials (cached per star in `_PER_STAR_NULL_CACHE`).
     Returns `median_px`, `p90_px`, `p95_px`, `max_px`, and `ceiling_px`.
     """
+    cache_key = (
+        round(float(target_pos[0]), 3),
+        round(float(target_pos[1]), 3),
+        flux.shape,
+        round(float(t[0]), 2) if len(t) > 0 else 0.0,
+        round(float(t[-1]), 2) if len(t) > 0 else 0.0,
+        round(float(np.nanmedian(flux)), 1),
+        mode,
+        int(n_trials),
+        int(seed),
+    )
+    if cache_key in _PER_STAR_NULL_CACHE:
+        return dict(_PER_STAR_NULL_CACHE[cache_key])
+
     rng = np.random.default_rng(seed)
     if len(t) > 2500:
         step = max(1, len(t) // 2500)
@@ -408,9 +445,12 @@ def compute_per_star_tpf_null(
         if mode == "variable":
             p_var_d = float(rng.uniform(0.5, 2.3))
             phi0 = float(rng.uniform(0.0, 1.0))
-            mod = 1.0 + 0.5 * depth_frac * np.cos(2.0 * np.pi * ((t - t[0]) / p_var_d - phi0))[:, None, None] * prf_w[None, :, :]
+            amp_inj = 0.5 * depth_frac
+            mod = 1.0 + amp_inj * np.cos(2.0 * np.pi * ((t - t[0]) / p_var_d - phi0))[:, None, None] * prf_w[None, :, :]
             fl_inj = flux * mod
-            _, off_val, _ = compute_variable_difference_image_centroid(t, fl_inj, p_var_d, target_pos=target_pos)
+            _, off_val, _ = compute_variable_difference_image_centroid(
+                t, fl_inj, p_var_d, target_pos=target_pos, expected_amp=amp_inj
+            )
         else:
             dur_d = float(rng.uniform(0.08, 0.16))
             ep = float(t[0] + rng.uniform(0.1 * p_d, 0.9 * p_d))
@@ -427,7 +467,9 @@ def compute_per_star_tpf_null(
             offsets.append(float(off_val))
 
     if not offsets:
-        return {"median_px": 0.25, "p90_px": 0.75, "p95_px": 0.90, "max_px": 0.96, "ceiling_px": 0.96}
+        res = {"median_px": 0.25, "p90_px": 0.75, "p95_px": 0.90, "max_px": 0.96, "ceiling_px": 0.96}
+        _PER_STAR_NULL_CACHE[cache_key] = res
+        return dict(res)
 
     arr = np.array(offsets, dtype=float)
     med = float(np.percentile(arr, 50))
@@ -436,48 +478,30 @@ def compute_per_star_tpf_null(
     mx = float(np.max(arr))
     # Star-specific upper ceiling: max(1.25 * p95, p95 + 0.10), bounded by 0.96 px pooled ceiling
     ceiling = min(0.96, max(1.25 * p95, p95 + 0.10))
-    return {
+    res = {
         "median_px": round(med, 3),
         "p90_px": round(p90, 3),
         "p95_px": round(p95, 3),
         "max_px": round(mx, 3),
         "ceiling_px": round(ceiling, 3),
     }
-
-
-_LOCAL_TPF_CACHE_PATTERNS = {
-    "346940718": "0000000346940718",
-    "HD 10528": "0000000346940718",
-    "10863314": "0000000010863314",
-    "HD 10653": "0000000010863314",
-    "229118094": "0000000229118094",
-    "HD 10661": "0000000229118094",
-    "399270628": "0000000399270628",
-    "HD 10635": "0000000399270628",
-    "231714759": "25.796_-58.0101",
-    "HD 10720": "25.796_-58.0101",
-    "630844439": "0000000630844439",
-    "HD 10581": "0000000630844439",
-    "627010171": "26.5232_63.8154",
-    "HD 10663": "26.5232_63.8154",
-    "419015320": "25.9803_-13.1501",
-    "HD 10669": "25.9803_-13.1501",
-}
+    _PER_STAR_NULL_CACHE[cache_key] = res
+    return dict(res)
 
 
 def _download_best_tpf(target: str, epoch: Optional[float] = None):
     """
-    Loads a TESS Target Pixel File from local cache first, or downloads from MAST with timeout
-    (preferring 120s SPOC TPF, then any TESS TPF, then a TESScut 11x11 FFI cutout).
+    Loads a TESS Target Pixel File from local cache first using generic 16-digit zero-padded
+    TIC ID matching (`digits.zfill(16)`), or downloads from MAST with timeout (preferring 120s
+    SPOC TPF, then any TESS TPF, then a TESScut 11x11 FFI cutout).
     When epoch is specified, checks up to 4 sectors to find the sector covering epoch.
     """
     socket.setdefaulttimeout(30)
-    # 1. Fast local cache check for TIC IDs and known survey targets
-    digits = "".join(filter(str.isdigit, str(target)))
+    # 1. Generic TIC-keyed local cache check (no hardcoded star-name dictionaries)
     t_clean = str(target).strip()
-    pat = _LOCAL_TPF_CACHE_PATTERNS.get(t_clean) or _LOCAL_TPF_CACHE_PATTERNS.get(digits)
-    if not pat and digits and len(digits) >= 6:
-        pat = digits.zfill(16)
+    is_tic_id = t_clean.upper().startswith("TIC") or t_clean.isdigit()
+    digits = "".join(filter(str.isdigit, t_clean)) if is_tic_id else ""
+    pat = digits.zfill(16) if (digits and len(digits) >= 5) else None
     if pat:
         try:
             cache_dir = lk.config.get_cache_dir()
@@ -556,7 +580,7 @@ def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, p
     """
     Downloads Target Pixel File (TPF) or TESScut FFI cutout from MAST and calculates
     in-transit vs out-of-transit difference image photocenter offset.
-    Compares against both the 95th-percentile pooled ceiling (0.96 px) and the star's own TPF null.
+    Compares against both the 95th-percentile pooled ceiling (0.96 px) and the star's own TPF null (n_trials=50).
     """
     try:
         if not target or str(target).strip() in ["", "None", "N/A", "--"]:
@@ -592,7 +616,7 @@ def check_tpf_centroid_motion(target: str, epoch: float, duration_days: float, p
         target_pos = _extract_tpf_wcs_target_pos(tpf)
         if target_pos is None:
             return "NOT_RUN", np.nan, "NOT_RUN (Missing valid WCS target coordinates)"
-        null_stats = compute_per_star_tpf_null(t, flux, target_pos, mode="transit", n_trials=20)
+        null_stats = compute_per_star_tpf_null(t, flux, target_pos, mode="transit", n_trials=50)
         return compute_difference_image_centroid(flux, in_tr, out_tr, target_pos, per_star_ceiling_px=null_stats["ceiling_px"])
     except Exception as e:
         return "NOT_RUN", np.nan, f"NOT_RUN (TPF error: {e})"
@@ -607,7 +631,7 @@ def check_tpf_variable_centroid_motion(
     Downloads TPF or TESScut FFI cutout from MAST and tests phase-aligned peak-vs-trough
     difference image photocenter stability for periodic variables.
     Note: `epoch` is used strictly to select the TPF sector covering `epoch`; phase alignment `t0`
-    is ALWAYS computed from the TPF's own Fourier sinusoidal maximum so quadrature blends cannot pass.
+    is ALWAYS computed from the TPF's own 8-phase search so quadrature blends cannot pass.
     """
     try:
         if not target or str(target).strip() in ["", "None", "N/A", "--"]:
@@ -627,7 +651,7 @@ def check_tpf_variable_centroid_motion(
         if target_pos is None:
             return "NOT_RUN", np.nan, "NOT_RUN (Missing valid WCS target coordinates)"
 
-        null_stats = compute_per_star_tpf_null(t, flux, target_pos, mode="transit", n_trials=20)
+        null_stats = compute_per_star_tpf_null(t, flux, target_pos, mode="transit", n_trials=50)
         return compute_variable_difference_image_centroid(
             t,
             flux,
@@ -817,11 +841,33 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 is_known: bool = False,
                 target_name: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
     from config import SDE_THRESHOLD, LS_FAP_THRESHOLD, LS_FAP_SWEEP, DEPTH_MAX
+
+    tpf_target = target_name
+    if target_name and not str(target_name).strip().upper().startswith("TIC"):
+        for lc_obj in (lc_unflat, lc_flat):
+            if hasattr(lc_obj, "meta") and isinstance(lc_obj.meta, dict):
+                tid = lc_obj.meta.get("TARGETID")
+                if tid is not None and str(tid).strip().isdigit():
+                    tpf_target = f"TIC {int(tid)}"
+                    break
     
-    # Check if Lomb-Scargle is significantly stronger (e.g. pulsating variable with SDE 30 vs BLS 8)
+    # Check if Lomb-Scargle is significantly stronger AND passes sinusoidal variable shape validation
     ls_sde = ls_res.get('sde', 0.0) if ls_res else 0.0
     bls_sde = bls_res.get('sde', 0.0) if bls_res else 0.0
-    prefer_ls = (ls_sde > bls_sde and ls_sde >= 10.0 and ls_res.get('fap', 1.0) < LS_FAP_SWEEP)
+    ls_valid_sinusoid = False
+    if ls_res and ls_sde >= 10.0 and ls_res.get('fap', 1.0) < LS_FAP_SWEEP:
+        ls_p = ls_res.get('period', 0.0)
+        ls_amp = ls_res.get('amplitude', 0.0)
+        if ls_amp >= 0.001 and not check_tess_systematics(ls_p):
+            _, fl_b_ls = phase_fold_and_bin(lc_unflat, ls_p, float(lc_unflat.time.value[0]), bins=40)
+            med_b_ls = np.nanmedian(fl_b_ls)
+            p2p_b_ls = float(np.nanmax(fl_b_ls) - np.nanmin(fl_b_ls))
+            if (1.3 * ls_amp <= p2p_b_ls <= 3.2 * ls_amp) and (
+                np.sum(fl_b_ls > med_b_ls + 0.3 * ls_amp) >= 4
+                and np.sum(fl_b_ls < med_b_ls - 0.3 * ls_amp) >= 4
+            ):
+                ls_valid_sinusoid = True
+    prefer_ls = (ls_valid_sinusoid and ls_sde > bls_sde)
 
     # Branch 1: Periodic Transits (BLS)
     if not prefer_ls and bls_res and bls_sde >= SDE_THRESHOLD:
@@ -848,8 +894,8 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 odd_even_ratio = check_odd_even(lc_flat, period, epoch, duration)
                 centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
                 centroid_offset_px = np.nan
-                if target_name:
-                    tpf_st, tpf_off, tpf_desc = check_tpf_centroid_motion(target_name, epoch, duration, period)
+                if tpf_target:
+                    tpf_st, tpf_off, tpf_desc = check_tpf_centroid_motion(tpf_target, epoch, duration, period)
                     if tpf_st != "NOT_RUN":
                         centroid_offset_px = tpf_off
                         if centroid_status == "NOT_RUN" or tpf_st != "PASS":
@@ -903,8 +949,8 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
             
         centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
         centroid_offset_px = np.nan
-        if target_name:
-            tpf_st, tpf_off, tpf_desc = check_tpf_centroid_motion(target_name, epoch, duration, None)
+        if tpf_target:
+            tpf_st, tpf_off, tpf_desc = check_tpf_centroid_motion(tpf_target, epoch, duration, None)
             if tpf_st != "NOT_RUN":
                 centroid_offset_px = tpf_off
                 if centroid_status == "NOT_RUN" or tpf_st != "PASS":
@@ -986,9 +1032,9 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         if not check_tess_systematics(period):
             centroid_status, centroid_sigma, centroid_desc = check_variable_centroid_motion(lc_unflat, period, float(lc_unflat.time.value[0]))
             centroid_offset_px = np.nan
-            if target_name:
+            if tpf_target:
                 tpf_st, tpf_off, tpf_desc = check_tpf_variable_centroid_motion(
-                    target_name, period, epoch=None, expected_amp=amp
+                    tpf_target, period, epoch=None, expected_amp=amp
                 )
                 if tpf_st != "NOT_RUN":
                     centroid_offset_px = tpf_off

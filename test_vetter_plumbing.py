@@ -320,7 +320,7 @@ def test_variable_difference_image_quadrature_and_per_star_null():
         # Static target + 3-px variable neighbor blend -> must FAIL at every phase (including quadrature phi_0=0.25)
         cube_blend = 1000.0 * target_prf[None, :, :] + 400.0 * neighbor_prf[None, :, :] * (1.0 + 3.0 * mod) + noise
         st_bl, off_bl, _ = compute_variable_difference_image_centroid(
-            t, cube_blend, period_d, target_pos=(5.0, 5.0)
+            t, cube_blend, period_d, target_pos=(5.0, 5.0), expected_amp=0.015
         )
         assert st_bl == "FAIL", f"Expected FAIL for 3-px variable blend at phase {phi_0}, got {st_bl} ({off_bl} px)"
         assert off_bl > 2.4, f"Expected > 2.4 px offset for 3-px variable blend at phase {phi_0}, got {off_bl}"
@@ -329,15 +329,15 @@ def test_variable_difference_image_quadrature_and_per_star_null():
     shifted_prf = np.exp(-((x_grid - 5.75) ** 2 + (y_grid - 5.0) ** 2) / 2.0)
     shifted_prf /= np.sum(shifted_prf)
     mod0 = 0.015 * np.sin(2.0 * np.pi * (t / period_d))[:, None, None]
-    cube_marginal = 1000.0 * target_prf[None, :, :] + 1000.0 * shifted_prf[None, :, :] * mod0
+    cube_marginal = 1000.0 * target_prf[None, :, :] + 1000.0 * shifted_prf[None, :, :] * mod0 + np.random.normal(0.0, 0.2, (n_cad, 11, 11))
     st_m, off_m, msg_m = compute_variable_difference_image_centroid(
-        t, cube_marginal, period_d, target_pos=(5.0, 5.0), per_star_ceiling_px=0.37
+        t, cube_marginal, period_d, target_pos=(5.0, 5.0), expected_amp=0.015, per_star_ceiling_px=0.37
     )
     assert st_m == "PASS_MARGINAL", f"Expected PASS_MARGINAL when offset ({off_m}) > per_star_ceiling_px (0.37), got {st_m}"
     assert "exceeds star's own TPF injection ceiling" in msg_m
 
     # 3. TPF folded amplitude coherence check (HD 10661 case: TPF folded amp << expected_amp)
-    cube_weak_amp = 1000.0 * target_prf[None, :, :] * (1.0 + 0.0003 * np.sin(2.0 * np.pi * (t / period_d))[:, None, None])
+    cube_weak_amp = 1000.0 * target_prf[None, :, :] * (1.0 + 0.0005 * np.sin(2.0 * np.pi * (t / period_d))[:, None, None]) + np.random.normal(0.0, 0.02, (n_cad, 11, 11))
     st_w, _, msg_w = compute_variable_difference_image_centroid(
         t, cube_weak_amp, period_d, target_pos=(5.0, 5.0), expected_amp=0.0062
     )
@@ -373,6 +373,120 @@ def test_giant_rotation_sanity_and_offline_calibration():
     print("  -> Passed: Giant rotation sanity check (HD 10669 -> Tier B) and read-only offline calibration verified.")
 
 
+def test_watchdog_nonblocking_timeout_and_socket_timeout():
+    print("[Test 13] Verifying non-blocking watchdog timeout (<0.8s on 8.0s hang) and socket/astroquery timeouts...")
+    import socket
+    import time
+    import downloader
+    import catalog_checker
+    import main
+    from db import get_target_status
+
+    # 1. Verify global socket and astroquery timeouts
+    assert socket.getdefaulttimeout() == 30, f"Expected socket default timeout 30s, got {socket.getdefaulttimeout()}"
+    from astroquery.mast import Observations, Catalogs
+    from astroquery.simbad import Simbad
+    from astroquery.vizier import Vizier
+    assert Observations.TIMEOUT == 30, f"Expected Observations.TIMEOUT=30, got {Observations.TIMEOUT}"
+    assert Catalogs.TIMEOUT == 30, f"Expected Catalogs.TIMEOUT=30, got {Catalogs.TIMEOUT}"
+    assert Simbad.TIMEOUT == 30, f"Expected Simbad.TIMEOUT=30, got {Simbad.TIMEOUT}"
+    assert Vizier.TIMEOUT == 30, f"Expected Vizier.TIMEOUT=30, got {Vizier.TIMEOUT}"
+
+    # 2. Simulate an 8-second hang inside process_target and verify run_target_with_watchdog(timeout_sec=0.3)
+    #    returns in < 0.8s (proving shutdown(wait=False, cancel_futures=True) does not wait for the hung thread)
+    from db import upsert_target
+    upsert_target("TIC_WATCHDOG_HANG_TEST", "TIC_WATCHDOG_HANG_TEST", 0.0, 0.0, "PENDING")
+    orig_pipeline = main.process_target
+
+    def _simulated_8s_hang(tic_id: str):
+        time.sleep(8.0)
+
+    main.process_target = _simulated_8s_hang
+    try:
+        t0 = time.perf_counter()
+        ok = main.run_target_with_watchdog("TIC_WATCHDOG_HANG_TEST", timeout_sec=0.3)
+        elapsed = time.perf_counter() - t0
+        assert not ok, "Expected run_target_with_watchdog to return False on timeout"
+        assert elapsed < 0.8, (
+            f"Watchdog blocked for {elapsed:.2f}s (expected < 0.8s for 0.3s timeout on 8.0s hang)"
+        )
+        st = get_target_status("TIC_WATCHDOG_HANG_TEST")
+        assert st == "DOWNLOAD_ERROR", f"Expected DB status DOWNLOAD_ERROR after watchdog timeout, got {st}"
+    finally:
+        main.process_target = orig_pipeline
+        from db import get_connection
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("DELETE FROM targets WHERE tic_id = ?", ("TIC_WATCHDOG_HANG_TEST",))
+        conn.commit()
+        conn.close()
+
+    print(f"  -> Passed: Watchdog timed out in {elapsed:.3f}s (< 0.8s on 8.0s hang) and socket/astroquery timeouts verified.")
+
+
+def test_signal_free_tpf_returns_not_run_and_no_hardcoded_cache_dict():
+    print("[Test 14] Verifying signal-free TPF returns NOT_RUN (40/40), mandatory expected_amp, n_trials=50 cache, and no _LOCAL_TPF_CACHE_PATTERNS...")
+    import inspect
+    import vetter
+    from vetter import (
+        compute_variable_difference_image_centroid,
+        compute_per_star_tpf_null,
+        _PER_STAR_NULL_CACHE,
+    )
+
+    # 1. Verify hardcoded _LOCAL_TPF_CACHE_PATTERNS is completely removed from production vetter.py
+    assert not hasattr(vetter, "_LOCAL_TPF_CACHE_PATTERNS"), (
+        "_LOCAL_TPF_CACHE_PATTERNS must not exist in production vetter.py"
+    )
+
+    # 2. Verify compute_per_star_tpf_null default n_trials == 50 and caches per star
+    sig = inspect.signature(compute_per_star_tpf_null)
+    assert sig.parameters["n_trials"].default == 50, (
+        f"Expected compute_per_star_tpf_null default n_trials=50, got {sig.parameters['n_trials'].default}"
+    )
+
+    # 3. Verify expected_amp is mandatory in compute_variable_difference_image_centroid
+    rng = np.random.default_rng(20261060)
+    t = np.linspace(0.0, 27.4, 600)
+    yg, xg = np.mgrid[:11, :11]
+    prf = np.exp(-((xg - 5.0) ** 2 + (yg - 5.0) ** 2) / 2.0)
+    prf /= np.sum(prf)
+    mod_cube = (10000.0 * (1.0 + 0.005 * np.sin(2.0 * np.pi * t / 1.5))[:, None, None] * prf[None, :, :]) + rng.normal(0.0, 5.0, (600, 11, 11))
+    st_no_amp, _, _ = compute_variable_difference_image_centroid(t, mod_cube, 1.5, target_pos=(5.0, 5.0), expected_amp=None)
+    assert st_no_amp == "NOT_RUN", f"Expected NOT_RUN when expected_amp is None, got {st_no_amp}"
+
+    # 4. Run 40 signal-free TPF simulations with pointing jitter + linear drift + static 40% neighbor
+    #    and expected_amp=0.002 supplied -> all 40 must return NOT_RUN (0 PASS, 0 FAIL, 0 PASS_MARGINAL)
+    verdicts = []
+    for i in range(40):
+        fl_level = [50000.0, 3000.0, 600.0][i % 3]
+        p_test = 0.7 if i % 2 == 0 else 2.4
+        jx = rng.normal(0.0, 0.12, len(t)) + np.linspace(-0.12, 0.12, len(t))
+        jy = rng.normal(0.0, 0.12, len(t)) + np.linspace(-0.08, 0.08, len(t))
+        cube = np.zeros((len(t), 11, 11))
+        for c in range(len(t)):
+            t_prf = np.exp(-((xg - (5.0 + jx[c])) ** 2 + (yg - (5.0 + jy[c])) ** 2) / 2.0)
+            t_prf /= np.sum(t_prf)
+            n_prf = np.exp(-((xg - (8.0 + jx[c])) ** 2 + (yg - (5.0 + jy[c])) ** 2) / 2.0)
+            n_prf /= np.sum(n_prf)
+            cube[c] = fl_level * t_prf + 0.4 * fl_level * n_prf + rng.normal(0.0, np.sqrt(fl_level) * 0.25, (11, 11))
+        st_sf, _, _ = compute_variable_difference_image_centroid(
+            t, cube, p_test, target_pos=(5.0, 5.0), expected_amp=0.002
+        )
+        verdicts.append(st_sf)
+
+    not_run_count = sum(1 for v in verdicts if v == "NOT_RUN")
+    assert not_run_count == 40, f"Expected 40/40 NOT_RUN on signal-free TPF, got {not_run_count}/40 ({set(verdicts)})"
+
+    # 5. Verify _PER_STAR_NULL_CACHE caches repeated calls
+    _PER_STAR_NULL_CACHE.clear()
+    null1 = compute_per_star_tpf_null(t, mod_cube, (5.0, 5.0), mode="transit", n_trials=10)
+    assert len(_PER_STAR_NULL_CACHE) == 1
+    null2 = compute_per_star_tpf_null(t, mod_cube, (5.0, 5.0), mode="transit", n_trials=10)
+    assert null1 == null2
+    print("  -> Passed: 40/40 signal-free TPFs returned NOT_RUN, expected_amp mandatory, n_trials=50 cached, no hardcoded dict.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -386,5 +500,7 @@ if __name__ == "__main__":
     test_shared_production_detrender_and_tpf_sector_guard()
     test_variable_difference_image_quadrature_and_per_star_null()
     test_giant_rotation_sanity_and_offline_calibration()
-    print("\n=== ALL 12 PLUMBING, RETRY, CENTROID, QUADRATURE, GIANT ROTATION & CALIBRATION TESTS PASSED! ===")
+    test_watchdog_nonblocking_timeout_and_socket_timeout()
+    test_signal_free_tpf_returns_not_run_and_no_hardcoded_cache_dict()
+    print("\n=== ALL 14 PLUMBING, WATCHDOG, CENTROID, QUADRATURE, GIANT ROTATION & CALIBRATION TESTS PASSED! ===")
 

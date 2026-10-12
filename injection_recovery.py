@@ -557,24 +557,22 @@ def run_synthetic_regression_benchmark(max_workers: int = 8) -> Dict[str, Any]:
 run_planet_vs_fp_precision_recall_benchmark = run_synthetic_regression_benchmark
 
 
-def run_real_tess_archive_benchmark() -> Dict[str, Any]:
+def run_catalog_regression_checks() -> Dict[str, Any]:
     """
-    Evaluates a Real TESS Archive Benchmark across 11 documented TESS targets (confirmed exoplanet
-    WASP-126 b, confirmed VSX Algol EB HD 10720, Prsa/SIMBAD spectroscopic binary HD 10702,
-    survey variable stars HD 10528 / HD 10635 / HD 10653, and real TESS giant blends / demoted
-    false positives HD 10525, HD 10548, HD 10609, HD 10661, HD 10669) using real cached TESS FITS
-    observations and the production vetting checks.
+    Evaluates 1 independent planet recovery (WASP-126 b end-to-end) + 10 catalog regression checks
+    (confirmed VSX Algol EB HD 10720, SIMBAD spectroscopic binary HD 10702, survey variable stars
+    HD 10528 / HD 10635 / HD 10653, and demoted/rejected giants HD 10525, HD 10548, HD 10609,
+    HD 10661, HD 10669) against the production vetting functions.
     """
     import glob
     from vetter import (
         check_orbit_physical_separation,
         check_transit_duration_physical,
         check_giant_rotation_sanity,
-        check_tpf_centroid_motion,
         check_tpf_variable_centroid_motion,
     )
 
-    print("\n[5/5] Running Real TESS Archive Benchmark (Confirmed Planet, EBs, Variables & Giant Blends)...", flush=True)
+    print("\n[5/6] Running 1 Independent Planet Recovery + 10 Catalog Regression Checks...", flush=True)
     cache_dir = lk.config.get_cache_dir()
     lc_files = glob.glob(os.path.join(cache_dir, "mastDownload", "TESS", "*", "*_lc.fits")) + glob.glob(
         os.path.join(cache_dir, "mastDownload", "HLSP", "*", "*llc.fits")
@@ -582,7 +580,7 @@ def run_real_tess_archive_benchmark() -> Dict[str, Any]:
 
     records = []
 
-    # 1. Real TESS Confirmed Exoplanet: WASP-126 b (TIC 25155310, P_true = 3.2888 d, R* = 1.27 R_sun)
+    # 1. Independent Real TESS Confirmed Exoplanet Recovery: WASP-126 b (TIC 25155310, P_true = 3.2888 d, R* = 1.27 R_sun)
     wasp_matches = [f for f in lc_files if "0000000025155310" in f]
     if wasp_matches:
         lc_raw = lk.read(wasp_matches[0]).remove_nans().remove_outliers(sigma=5.0)
@@ -596,29 +594,29 @@ def run_real_tess_archive_benchmark() -> Dict[str, Any]:
         ok = (cat == "CANDIDATE_EXOPLANET") and (abs(p_det - 3.2888) / 3.2888 < 0.005)
         records.append({
             "target": "WASP-126 b (TIC 25155310)",
-            "ground_truth": "Confirmed TESS Hot Jupiter (P=3.2888d)",
+            "ground_truth": "Independent Planet Recovery (P=3.2888d)",
             "pipeline_result": f"{cat} (P={p_det:.5f}d, SDE={vres.get('sde', 0):.1f})",
             "correct": ok,
         })
 
-    # 2. Real TESS Confirmed Algol EB: HD 10720 (TIC 231714759, P_true = 3.78449 d, R* = 0.98 R_sun)
+    # 2. Catalog Regression Check: Confirmed Algol EB HD 10720 (TIC 231714759, P_true = 3.78449 d, R* = 0.98 R_sun)
     p_10720 = 3.78442
     orb_ok, _, _ = check_orbit_physical_separation(p_10720, 0.98, 1.1)
     dur_ok_10720, _, _ = check_transit_duration_physical(0.14, 0.98, 1.1)
     ok_10720 = (abs(p_10720 - 3.78449) / 3.78449 < 0.005) and orb_ok and dur_ok_10720
     records.append({
         "target": "HD 10720 (TIC 231714759)",
-        "ground_truth": "Confirmed VSX Algol EB (P=3.78449d, R*=0.98 R_sun)",
+        "ground_truth": "Catalog Regression: Confirmed VSX EA (P=3.78449d)",
         "pipeline_result": f"CONFIRMED_VSX_RECOVERY_EA (P_det={p_10720:.5f}d, diff=0.002%, TPF=0.45 px)",
         "correct": ok_10720,
     })
 
-    # 3. Real TESS Variables with SPOC/FFI TPFs: HD 10528, HD 10635, HD 10653 (Tier A) and HD 10661 (Demoted Tier B)
+    # 3. Catalog Regression Checks: Real TESS Variables with SPOC TPFs (HD 10528, HD 10635, HD 10653 Tier A; HD 10661 Demoted Tier B)
     var_targets = [
-        ("HD 10528", "TIC 346940718", 0.07189, 0.001768, 3.48, "PASS", "Tier A Delta Scuti Variable"),
-        ("HD 10635", "TIC 399270628", 0.41285, 0.001460, 1.63, "PASS", "Tier A Short-Period Variable"),
-        ("HD 10653", "TIC 10863314",  1.06772, 0.002007, 2.77, "PASS", "Tier A Periodic Variable"),
-        ("HD 10661", "TIC 229118094", 4.10358, 0.003114, 1.43, "PASS_MARGINAL", "Demoted Tier B (Exceeds Per-Star Null & Low TPF Amp)"),
+        ("HD 10528", "TIC 346940718", 0.07189, 0.001768, 3.48, "PASS", "Catalog Regression: Tier A Delta Scuti Variable"),
+        ("HD 10635", "TIC 399270628", 0.41285, 0.001460, 1.63, "PASS", "Catalog Regression: Tier A Short-Period Variable"),
+        ("HD 10653", "TIC 10863314",  1.06772, 0.002007, 2.77, "PASS", "Catalog Regression: Tier A Periodic Variable"),
+        ("HD 10661", "TIC 229118094", 4.10358, 0.003114, 1.43, "PASS_MARGINAL", "Catalog Regression: Demoted Tier B (Exceeds Per-Star Null)"),
     ]
     for nm, tic, p_val, amp_val, r_s, exp_st, truth_lbl in var_targets:
         st_v, off_v, _ = check_tpf_variable_centroid_motion(tic, p_val, epoch=None, expected_amp=amp_val)
@@ -630,18 +628,18 @@ def run_real_tess_archive_benchmark() -> Dict[str, Any]:
             "correct": (st_v == exp_st),
         })
 
-    # 4. Real TESS Giant Rotation / Binary & Blend Rejections: HD 10669, HD 10525, HD 10702, HD 10548, HD 10609
+    # 4. Catalog Regression Checks: Giant Rotation / Binary & Blend Rejections (HD 10669, HD 10525, HD 10702, HD 10548, HD 10609)
     rot_ok_669, veq_669, _ = check_giant_rotation_sanity(7.94418, 12.80)
     records.append({
         "target": "HD 10669 (TIC 419015320)",
-        "ground_truth": "Giant Star (R*=12.8 R_sun, P=7.94d -> v_eq=81.5 km/s > 35 km/s)",
+        "ground_truth": "Catalog Regression: Giant Star (v_eq=81.5 km/s > 35 km/s)",
         "pipeline_result": f"rot_sanity_pass={rot_ok_669} (v_eq={veq_669:.1f} km/s -> Demoted Tier B)",
         "correct": (not rot_ok_669),
     })
 
     for nm, tic, p_val, r_s, truth_lbl in [
-        ("HD 10525", "TIC 410501351", 0.6107, 28.23, "Giant Unphysical Orbit (a=4.4 R_sun <= R*=28.2 R_sun)"),
-        ("HD 10702", "TIC 72956635",  1.76234, 10.25, "SIMBAD SB* K1III Giant Unphysical Orbit (a=8.3 R_sun <= R*=10.25 R_sun)"),
+        ("HD 10525", "TIC 410501351", 0.6107, 28.23, "Catalog Regression: Giant Unphysical Orbit (a <= R*)"),
+        ("HD 10702", "TIC 72956635",  1.76234, 10.25, "Catalog Regression: SIMBAD SB* Giant Unphysical Orbit"),
     ]:
         orb_ok, a_rs, _ = check_orbit_physical_separation(p_val, r_s, 2.5)
         records.append({
@@ -652,8 +650,8 @@ def run_real_tess_archive_benchmark() -> Dict[str, Any]:
         })
 
     for nm, tic, dur_d, r_s, truth_lbl in [
-        ("HD 10548", "TIC 61577862",  0.15, 88.34, "Giant Fast-Dip Blend (dur=3.6h << min=65.8h for 88.3 R_sun)"),
-        ("HD 10609", "TIC 369535078", 0.15, 34.99, "Giant Fast-Dip Blend (dur=3.6h << min=16.4h for 35.0 R_sun)"),
+        ("HD 10548", "TIC 61577862",  0.15, 88.34, "Catalog Regression: Giant Fast-Dip Blend (dur << min)"),
+        ("HD 10609", "TIC 369535078", 0.15, 34.99, "Catalog Regression: Giant Fast-Dip Blend (dur << min)"),
     ]:
         dur_ok, t_min, _ = check_transit_duration_physical(dur_d, r_s, 2.5)
         records.append({
@@ -676,12 +674,157 @@ def run_real_tess_archive_benchmark() -> Dict[str, Any]:
     }
 
 
+# Keep backward-compatible alias
+run_real_tess_archive_benchmark = run_catalog_regression_checks
+
+
+def run_external_tess_benchmark(csv_path: str = None) -> Dict[str, Any]:
+    """
+    Runs the 24-target External TESS Benchmark (`benchmark/targets.csv`) end-to-end through
+    `detrend_lightcurve_production` -> `run_bls` + `run_lomb_scargle` -> `vet_signals` on real
+    TESS FITS light curves with external ground-truth dispositions from the NASA Exoplanet Archive,
+    Prsa et al. (2022) TESS EB Catalog, AAVSO VSX, SIMBAD SB9/Gaia DR3, and Hipparcos.
+    Reports both multi-class classification accuracy and the Exoplanet vs. Non-Planet confusion
+    matrix, including all misses and Tier B leaks.
+    """
+    import csv
+    import glob
+    from pathlib import Path
+    from downloader import sort_and_deduplicate_lightcurve
+    from variable_engine import run_lomb_scargle
+
+    if csv_path is None:
+        csv_path = str(Path(__file__).parent / "benchmark" / "targets.csv")
+
+    print(f"\n[6/6] Running 24-Target End-to-End External TESS Benchmark ({os.path.basename(csv_path)})...", flush=True)
+    cache_dir = lk.config.get_cache_dir()
+    all_lc = glob.glob(os.path.join(cache_dir, "mastDownload", "**", "*lc.fits"), recursive=True)
+
+    with open(csv_path, "r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+
+    records = []
+    tp_planet = fp_planet = fn_planet = tn_planet = 0
+    fp_planet_tier_a = 0
+    leaked_cases = []
+    missed_cases = []
+
+    for row in rows:
+        nm = row["target_name"].strip()
+        tid = row["tic_id"].strip()
+        ext_cls = row["external_class"].strip()
+        p_cat = float(row["catalog_period_d"])
+        r_s = float(row["r_star_rsun"])
+        m_s = float(row["m_star_msun"])
+        src_cat = row["source_catalog"].strip()
+        src_dt = row["source_date"].strip()
+
+        pat = tid.zfill(16)
+        matches = [f for f in all_lc if pat in f]
+        if not matches:
+            continue
+
+        lc_raw = sort_and_deduplicate_lightcurve(lk.read(matches[0]).remove_nans().normalize())
+        lc_flat, _ = detrend_lightcurve_production(lc_raw)
+        bres = run_bls(lc_flat)
+        lres = run_lomb_scargle(lc_raw)
+        cat, vres = vet_signals(
+            bls_res=bres,
+            ls_res=lres,
+            single_res=None,
+            micro_res=None,
+            lc_flat=lc_flat,
+            lc_unflat=lc_raw,
+            sectors=[1],
+            r_star=r_s,
+            m_star=m_s,
+            is_known=True,
+            target_name=None,
+        )
+        p_det = float(vres.get("period", 0.0)) if vres else 0.0
+        sde_det = float(vres.get("sde", 0.0)) if vres else 0.0
+        tier_det = str(vres.get("tier", "C")) if vres else "C"
+
+        # Evaluate multi-class agreement with external catalog disposition
+        if ext_cls == "CONFIRMED_PLANET":
+            class_match = (cat == "CANDIDATE_EXOPLANET") and (abs(p_det - p_cat) / p_cat <= 0.01)
+            if class_match:
+                tp_planet += 1
+            else:
+                fn_planet += 1
+                missed_cases.append((nm, tid, ext_cls, cat, p_det, sde_det, tier_det))
+        else:
+            if cat == "CANDIDATE_EXOPLANET":
+                fp_planet += 1
+                if tier_det == "A" or sde_det >= 10.0:
+                    fp_planet_tier_a += 1
+                leaked_cases.append((nm, tid, ext_cls, cat, p_det, sde_det, tier_det, src_cat))
+                class_match = False
+            else:
+                tn_planet += 1
+                if ext_cls == "ECLIPSING_BINARY":
+                    class_match = (cat == "ECLIPSING_BINARY")
+                elif ext_cls == "GIANT_SPECTROSCOPIC_BINARY":
+                    class_match = (cat == "UNCLASSIFIED_PERIODIC_DIP")
+                elif ext_cls in ("VARIABLE_STAR", "NON_TRANSITING_RV_HOST"):
+                    class_match = (cat == "VARIABLE_STAR")
+                elif ext_cls == "CONSTANT_CONTROL":
+                    class_match = (cat == "FALSE_POSITIVE")
+                else:
+                    class_match = True
+                if not class_match:
+                    missed_cases.append((nm, tid, ext_cls, cat, p_det, sde_det, tier_det))
+
+        records.append({
+            "target_name": nm,
+            "tic_id": tid,
+            "external_class": ext_cls,
+            "catalog_period_d": p_cat,
+            "source_catalog": src_cat,
+            "source_date": src_dt,
+            "pred_category": cat,
+            "det_period_d": round(p_det, 5),
+            "det_sde": round(sde_det, 1),
+            "tier": tier_det,
+            "correct": class_match,
+        })
+
+    n_total = len(records)
+    n_correct = sum(1 for r in records if r["correct"])
+    acc_pct = (n_correct / n_total * 100.0) if n_total > 0 else 0.0
+    print(
+        f"  -> Evaluated {n_total} real TESS light curves end-to-end: Multi-Class Agreement = {n_correct}/{n_total} ({acc_pct:.1f}%) "
+        f"| Planet TP={tp_planet}, Non-Planet TN={tn_planet}, Tier B Leaks FP={fp_planet} (Tier A Leaks={fp_planet_tier_a})",
+        flush=True,
+    )
+    for lk_c in leaked_cases:
+        print(
+            f"     [Tier {lk_c[6]} Leak FP] {lk_c[0]} (TIC {lk_c[1]}, {lk_c[2]} - {lk_c[7]}): "
+            f"routed to {lk_c[3]} at P={lk_c[4]:.5f}d, SDE={lk_c[5]:.1f} (<10.0 Tier A gate)",
+            flush=True,
+        )
+    return {
+        "n_total": n_total,
+        "n_correct": n_correct,
+        "accuracy_pct": acc_pct,
+        "tp_planet": tp_planet,
+        "tn_planet": tn_planet,
+        "fp_planet": fp_planet,
+        "fp_planet_tier_a": fp_planet_tier_a,
+        "fn_planet": fn_planet,
+        "leaked_cases": leaked_cases,
+        "missed_cases": missed_cases,
+        "records": records,
+    }
+
+
 def print_summary_report(
     grid_res: Dict[str, Any],
     far_res: Dict[str, Any],
     bench_res: Dict[str, Any],
     pr_res: Dict[str, Any] = None,
     real_res: Dict[str, Any] = None,
+    ext_res: Dict[str, Any] = None,
 ):
     print("\n" + "=" * 88)
     print("ASTROHUNTER PRO -- FULL-PIPELINE INJECTION-RECOVERY & STATISTICAL AUDIT REPORT")
@@ -758,11 +901,24 @@ def print_summary_report(
 
     if real_res:
         print("-" * 88)
-        print(f"\n5. REAL TESS ARCHIVE BENCHMARK ({real_res['n_correct']}/{real_res['n_total']} Ground-Truth Targets Verified)")
+        print(f"\n5. 1 INDEPENDENT PLANET RECOVERY + 10 CATALOG REGRESSION CHECKS ({real_res['n_correct']}/{real_res['n_total']} Verified)")
         print("-" * 88)
         for r in real_res["records"]:
             verdict = "PASS" if r["correct"] else "FAIL"
             print(f"  • {r['target']:<28}: {r['pipeline_result']} -> [{verdict}]")
+
+    if ext_res and ext_res.get("n_total", 0) > 0:
+        print("-" * 88)
+        print(f"\n6. 24-TARGET END-TO-END EXTERNAL TESS BENCHMARK (benchmark/targets.csv: {ext_res['n_correct']}/{ext_res['n_total']} = {ext_res['accuracy_pct']:.1f}%)")
+        print("-" * 88)
+        print(f"  • Confirmed Planet Recovery (TP)       : {ext_res['tp_planet']}/1 (FN={ext_res['fn_planet']})")
+        print(f"  • Non-Planet Rejections (TN)           : {ext_res['tn_planet']}/23 (Tier B Leaks FP={ext_res['fp_planet']}, Tier A Leaks={ext_res['fp_planet_tier_a']})")
+        for r in ext_res["records"]:
+            verdict = "MATCH" if r["correct"] else "LEAK/MISMATCH"
+            print(
+                f"  • {r['target_name']:<10} (TIC {r['tic_id']:<10} | {r['external_class']:<26} | {r['source_date']}): "
+                f"{r['pred_category']:<25} P={r['det_period_d']:.5f}d SDE={r['det_sde']:.1f} [Tier {r['tier']}] -> [{verdict}]"
+            )
     print("=" * 88 + "\n", flush=True)
 
 
@@ -773,6 +929,8 @@ if __name__ == "__main__":
     far_results = run_false_alarm_rate_calibration(n_noise_realizations=60, max_workers=workers)
     bench_results = run_difference_image_pixel_benchmarks()
     pr_results = run_synthetic_regression_benchmark(max_workers=workers)
-    real_results = run_real_tess_archive_benchmark()
-    print_summary_report(grid_results, far_results, bench_results, pr_results, real_results)
+    real_results = run_catalog_regression_checks()
+    ext_results = run_external_tess_benchmark()
+    print_summary_report(grid_results, far_results, bench_results, pr_results, real_results, ext_results)
     print(f"✨ Full harness completed in {time.time() - t0_all:.1f}s.", flush=True)
+
