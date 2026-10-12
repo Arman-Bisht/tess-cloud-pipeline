@@ -47,7 +47,8 @@ def check_odd_even(lc: lk.LightCurve, period: float, epoch: float, duration: flo
     """
     Returns ratio of odd to even transit depths by folding at 2*P across normalized phase [-0.5, 0.5).
     In range [0.7, 1.3] = Consistent depths (Planet or equal EB).
-    Outside = Period-doubled Eclipsing Binary.
+    Outside = Period-doubled Eclipsing Binary (verified against per-transit core depths to prevent
+    small period offsets Delta_P from shifting odd transits into ingress/egress).
     """
     folded = lc.fold(period=2.0 * period, epoch_time=epoch, normalize_phase=True)
     phase = folded.time.value
@@ -57,40 +58,94 @@ def check_odd_even(lc: lk.LightCurve, period: float, epoch: float, duration: flo
     even_mask = np.abs(phase) <= max(half_dur2, 0.005)
     odd_mask = np.abs(np.abs(phase) - 0.5) <= max(half_dur2, 0.005)
     
-    if np.sum(even_mask) < 3 or np.sum(odd_mask) < 3:
+    even_vals = flux[even_mask]
+    odd_vals = flux[odd_mask]
+    even_vals = even_vals[np.isfinite(even_vals)]
+    odd_vals = odd_vals[np.isfinite(odd_vals)]
+    if len(even_vals) < 3 or len(odd_vals) < 3:
         return 1.0
         
     out_mask = (np.abs(phase) > 2.0 * half_dur2) & (np.abs(np.abs(phase) - 0.5) > 2.0 * half_dur2)
     baseline = np.nanmedian(flux[out_mask]) if np.any(out_mask) else np.nanmedian(flux)
     
-    even_depth = max(0.0, float(baseline - np.nanmedian(flux[even_mask])))
-    odd_depth = max(0.0, float(baseline - np.nanmedian(flux[odd_mask])))
+    even_depth = max(0.0, float(baseline - np.nanmedian(even_vals)))
+    odd_depth = max(0.0, float(baseline - np.nanmedian(odd_vals)))
     
     if even_depth <= 1e-6 or odd_depth <= 1e-6:
         return 1.0
         
-    return float(odd_depth / even_depth)
+    ratio = float(odd_depth / even_depth)
+    if not (0.7 <= ratio <= 1.3):
+        # Verify against per-transit core depths (bottom 50% of cadences inside each transit window)
+        # so a 0.1% period offset across the sector does not skew odd vs even ingress sampling
+        t_raw = lc.time.value
+        fl_raw = lc.flux.value
+        valid = np.isfinite(t_raw) & np.isfinite(fl_raw)
+        t_raw, fl_raw = t_raw[valid], fl_raw[valid]
+        cyc = np.round((t_raw - epoch) / max(period, 1e-5)).astype(int)
+        in_tr_any = np.abs(t_raw - (epoch + cyc * period)) <= 0.6 * duration
+        odd_d, even_d = [], []
+        for k in np.unique(cyc[in_tr_any]):
+            m_k = np.abs(t_raw - (epoch + k * period)) <= 0.6 * duration
+            if int(np.sum(m_k)) >= 4:
+                vals_k = np.sort(fl_raw[m_k])
+                d_k = max(0.0, float(baseline - np.median(vals_k[: max(3, len(vals_k) // 2)])))
+                if k % 2 == 0:
+                    even_d.append(d_k)
+                else:
+                    odd_d.append(d_k)
+        if len(even_d) >= 2 and len(odd_d) >= 2 and np.median(even_d) > 1e-6:
+            core_ratio = float(np.median(odd_d) / np.median(even_d))
+            if 0.7 <= core_ratio <= 1.3:
+                return core_ratio
+    return ratio
 
-def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Optional[float], duration: Optional[float]) -> Tuple[str, float, str]:
+def check_centroid_motion(
+    lc: lk.LightCurve,
+    period: Optional[float],
+    epoch: Optional[float],
+    duration: Optional[float],
+    depth: Optional[float] = None,
+) -> Tuple[str, float, str]:
     """
     Checks if photocenter (centroid) shifts during transit, indicating a blended nearby star.
+    Subtracts SPOC spacecraft pointing drift (pos_corr1/pos_corr2) when centroid_col/mom_centr1 are used.
     Uses two-sample Welch Standard Error of the Mean (SEM): sigma_diff = sqrt(s1^2/N1 + s2^2/N2).
+    When transit depth is supplied, also requires implied source offset d_implied = d_tot / depth >= 1.0 px.
     Returns tri-state (status, shift_sigma, status_description) where status is 'PASS', 'FAIL', or 'NOT_RUN'.
     """
     try:
         col_c = None
         row_c = None
+        used_col = None
+        used_row = None
         for col_name in ['centroid_col', 'mom_centr1', 'pos_corr1']:
             if hasattr(lc, col_name) and getattr(lc, col_name) is not None:
-                col_c = np.array(getattr(lc, col_name).value, dtype=float)
-                break
+                arr = np.array(getattr(lc, col_name).value, dtype=float)
+                if np.sum(np.isfinite(arr)) >= 50:
+                    col_c = arr
+                    used_col = col_name
+                    break
         for row_name in ['centroid_row', 'mom_centr2', 'pos_corr2']:
             if hasattr(lc, row_name) and getattr(lc, row_name) is not None:
-                row_c = np.array(getattr(lc, row_name).value, dtype=float)
-                break
+                arr = np.array(getattr(lc, row_name).value, dtype=float)
+                if np.sum(np.isfinite(arr)) >= 50:
+                    row_c = arr
+                    used_row = row_name
+                    break
                 
         if col_c is None or row_c is None:
             return "NOT_RUN", np.nan, "NOT_RUN (No centroid columns in QLP/FFI - Monitor with TPF)"
+
+        # Detrend spacecraft pointing drift (DVA/jitter) from flux-weighted moments when pos_corr is present
+        if used_col in ('centroid_col', 'mom_centr1') and hasattr(lc, 'pos_corr1') and getattr(lc, 'pos_corr1') is not None:
+            pc1 = np.array(getattr(lc, 'pos_corr1').value, dtype=float)
+            if len(pc1) == len(col_c) and np.sum(np.isfinite(pc1)) >= 50:
+                col_c = np.where(np.isfinite(pc1), col_c - pc1, col_c)
+        if used_row in ('centroid_row', 'mom_centr2') and hasattr(lc, 'pos_corr2') and getattr(lc, 'pos_corr2') is not None:
+            pc2 = np.array(getattr(lc, 'pos_corr2').value, dtype=float)
+            if len(pc2) == len(row_c) and np.sum(np.isfinite(pc2)) >= 50:
+                row_c = np.where(np.isfinite(pc2), row_c - pc2, row_c)
             
         if epoch is None or duration is None:
             return "NOT_RUN", np.nan, "NOT_RUN (Missing transit epoch/duration)"
@@ -125,6 +180,7 @@ def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Opt
         
         d_col = abs(float(np.median(col_in) - np.median(col_out)))
         d_row = abs(float(np.median(row_in) - np.median(row_out)))
+        d_tot = float(np.hypot(d_col, d_row))
         
         sem_col = float(np.sqrt(np.var(col_in, ddof=1) / n_in + np.var(col_out, ddof=1) / n_out))
         sem_row = float(np.sqrt(np.var(row_in, ddof=1) / n_in + np.var(row_out, ddof=1) / n_out))
@@ -133,7 +189,12 @@ def check_centroid_motion(lc: lk.LightCurve, period: Optional[float], epoch: Opt
         sigma_row = d_row / max(1e-6, sem_row)
         shift_sigma = float(max(sigma_col, sigma_row))
         
-        if shift_sigma > 3.5:
+        implied_offset_ok = True
+        if depth is not None and np.isfinite(depth) and depth > 0:
+            d_implied_px = d_tot / max(float(depth), 1e-4)
+            implied_offset_ok = (d_implied_px >= 1.0)
+            
+        if shift_sigma > 3.5 and implied_offset_ok:
             return "FAIL", round(shift_sigma, 2), f"FAIL: Significant photocenter shift ({shift_sigma:.1f} sigma SEM) - likely blend"
         return "PASS", round(shift_sigma, 2), f"PASS: Clean photocenter ({shift_sigma:.1f} sigma SEM shift)"
     except Exception as e:
@@ -867,7 +928,14 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 and np.sum(fl_b_ls < med_b_ls - 0.3 * ls_amp) >= 4
             ):
                 ls_valid_sinusoid = True
-    prefer_ls = (ls_valid_sinusoid and ls_sde > bls_sde)
+    bls_p_cand = float(bls_res.get('period', 0.0)) if bls_res else 0.0
+    ls_p_cand = float(ls_res.get('period', 0.0)) if ls_res else 0.0
+    ls_bls_harmonic = (
+        ls_p_cand > 0
+        and bls_p_cand > 0
+        and any(abs(bls_p_cand - mult * ls_p_cand) / (mult * ls_p_cand) <= 0.05 for mult in (0.5, 1.0, 2.0, 3.0))
+    )
+    prefer_ls = (ls_valid_sinusoid and ls_sde > bls_sde and (ls_bls_harmonic or bls_sde < SDE_THRESHOLD))
 
     # Branch 1: Periodic Transits (BLS)
     if not prefer_ls and bls_res and bls_sde >= SDE_THRESHOLD:
@@ -882,17 +950,26 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         snr = (depth / noise_level) * np.sqrt(n_in_est) if noise_level > 0 else 0
         
         if depth <= 0.50 and not check_tess_systematics(period) and snr > 3.0:
-            # Enforce binned phase transit depth coherence (reject outlier spikes)
+            # Enforce phase-folded transit depth coherence (reject single-cadence outlier spikes while
+            # preventing 50-bin boundary dilution on narrow transits at longer orbital periods)
             _, fl_binned = phase_fold_and_bin(lc_flat, period, epoch, bins=50)
-            binned_depth = np.nanmedian(fl_binned) - np.nanmin(fl_binned)
-            if binned_depth >= 0.35 * depth:
-                t_vals = lc_flat.time.value
+            binned_depth = float(np.nanmedian(fl_binned) - np.nanmin(fl_binned))
+            t_vals = lc_flat.time.value
+            fl_vals = lc_flat.flux.value
+            phase_tr = ((t_vals - epoch + 0.5 * period) % period) / period - 0.5
+            in_tr_core = np.abs(phase_tr) <= max(0.35 * (duration / max(period, 1e-5)), 0.003)
+            out_tr_core = np.abs(phase_tr) >= max(1.5 * (duration / max(period, 1e-5)), 0.02)
+            direct_depth = 0.0
+            if int(np.sum(in_tr_core)) >= 4 and int(np.sum(out_tr_core)) >= 10:
+                direct_depth = float(np.nanmedian(fl_vals[out_tr_core]) - np.nanmedian(fl_vals[in_tr_core]))
+            effective_coherence_depth = max(binned_depth, direct_depth)
+            if effective_coherence_depth >= 0.35 * depth:
                 observed_baseline = compute_observed_coverage_days(t_vals)
                 cycles = observed_baseline / period if period > 0 else 1.0
                 
                 sec_pass, sec_ratio = check_secondary_eclipse(lc_flat, period, epoch, depth, duration)
                 odd_even_ratio = check_odd_even(lc_flat, period, epoch, duration)
-                centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration)
+                centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, period, epoch, duration, depth=depth)
                 centroid_offset_px = np.nan
                 if tpf_target:
                     tpf_st, tpf_off, tpf_desc = check_tpf_centroid_motion(tpf_target, epoch, duration, period)
@@ -904,8 +981,15 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 
                 orbit_pass, a_rsun, orbit_desc = check_orbit_physical_separation(period, r_star, m_star)
                 dur_pass, t_dur_min, dur_desc = check_transit_duration_physical(duration, r_star, m_star)
+                companion_radius_pass = (
+                    r_star is None
+                    or not np.isfinite(r_star)
+                    or r_star <= 0
+                    or (float(r_star) * np.sqrt(max(0.0, float(depth))) * 9.731 <= 2.0)
+                )
+                is_planet_sized = (depth <= DEPTH_MAX) and companion_radius_pass
                 
-                tier = assign_tier("EXOPLANET" if depth <= DEPTH_MAX else "ECLIPSING_BINARY",
+                tier = assign_tier("EXOPLANET" if is_planet_sized else "ECLIPSING_BINARY",
                                    sde, cycles, sec_pass, centroid_status, r_star, orbit_pass, dur_pass, is_known)
                                    
                 bls_res.update({
@@ -931,7 +1015,7 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
                 if not orbit_pass or not dur_pass or cycles < 3.0:
                     return "UNCLASSIFIED_PERIODIC_DIP", bls_res
                 
-                if depth <= DEPTH_MAX and (0.7 <= odd_even_ratio <= 1.3) and sec_pass and centroid_status != "FAIL":
+                if is_planet_sized and (0.7 <= odd_even_ratio <= 1.3) and sec_pass and centroid_status != "FAIL":
                     return "CANDIDATE_EXOPLANET", bls_res
                 else:
                     return "ECLIPSING_BINARY", bls_res
@@ -947,7 +1031,7 @@ def vet_signals(bls_res: Optional[Dict[str, Any]],
         if depth > 0.50:
             return "FALSE_POSITIVE", {}
             
-        centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration)
+        centroid_status, centroid_sigma, centroid_desc = check_centroid_motion(lc_flat, None, epoch, duration, depth=depth)
         centroid_offset_px = np.nan
         if tpf_target:
             tpf_st, tpf_off, tpf_desc = check_tpf_centroid_motion(tpf_target, epoch, duration, None)

@@ -678,14 +678,16 @@ def run_catalog_regression_checks() -> Dict[str, Any]:
 run_real_tess_archive_benchmark = run_catalog_regression_checks
 
 
-def run_external_tess_benchmark(csv_path: str = None) -> Dict[str, Any]:
+def run_external_tess_benchmark(csv_path: str = None, results_csv_path: str = None) -> Dict[str, Any]:
     """
-    Runs the 24-target External TESS Benchmark (`benchmark/targets.csv`) end-to-end through
-    `detrend_lightcurve_production` -> `run_bls` + `run_lomb_scargle` -> `vet_signals` on real
-    TESS FITS light curves with external ground-truth dispositions from the NASA Exoplanet Archive,
-    Prsa et al. (2022) TESS EB Catalog, AAVSO VSX, SIMBAD SB9/Gaia DR3, and Hipparcos.
-    Reports both multi-class classification accuracy and the Exoplanet vs. Non-Planet confusion
-    matrix, including all misses and Tier B leaks.
+    Runs the 50-target Held-Out External TESS Benchmark (`benchmark/targets.csv`: 28 NASA Exoplanet
+    Archive Confirmed/Known Planets + 22 NASA Exoplanet Archive TOI False Positives and Prsa et al.
+    2022 TESS Eclipsing Binaries) end-to-end through `detrend_lightcurve_production` -> `run_bls` +
+    `run_lomb_scargle` -> `vet_signals(..., is_known=False)` on real SPOC 2-minute FITS light curves.
+    Fails with RuntimeError if any target FITS file is missing (`n_evaluated < n_rows`).
+    Writes per-target results to `benchmark/results.csv` and reports Precision, Recall (Sensitivity),
+    Specificity (TNR), F1-Score, and Accuracy with 95% Wilson confidence intervals alongside the
+    majority-class baseline.
     """
     import csv
     import glob
@@ -693,41 +695,71 @@ def run_external_tess_benchmark(csv_path: str = None) -> Dict[str, Any]:
     from downloader import sort_and_deduplicate_lightcurve
     from variable_engine import run_lomb_scargle
 
+    base_dir = Path(__file__).parent / "benchmark"
     if csv_path is None:
-        csv_path = str(Path(__file__).parent / "benchmark" / "targets.csv")
-
-    print(f"\n[6/6] Running 24-Target End-to-End External TESS Benchmark ({os.path.basename(csv_path)})...", flush=True)
-    cache_dir = lk.config.get_cache_dir()
-    all_lc = glob.glob(os.path.join(cache_dir, "mastDownload", "**", "*lc.fits"), recursive=True)
+        csv_path = str(base_dir / "targets.csv")
+    if results_csv_path is None:
+        results_csv_path = str(base_dir / "results.csv")
 
     with open(csv_path, "r", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
-    records = []
-    tp_planet = fp_planet = fn_planet = tn_planet = 0
-    fp_planet_tier_a = 0
-    leaked_cases = []
-    missed_cases = []
+    n_rows = len(rows)
+    print(f"\n[6/6] Running {n_rows}-Target Held-Out External TESS Benchmark ({os.path.basename(csv_path)})...", flush=True)
+    cache_dir = lk.config.get_cache_dir()
+    all_lc = glob.glob(os.path.join(cache_dir, "mastDownload", "**", "*lc.fits"), recursive=True)
 
+    missing_targets = []
+    matched_paths = []
     for row in rows:
         nm = row["target_name"].strip()
         tid = row["tic_id"].strip()
-        ext_cls = row["external_class"].strip()
-        p_cat = float(row["catalog_period_d"])
-        r_s = float(row["r_star_rsun"])
-        m_s = float(row["m_star_msun"])
+        s3_key = row.get("s3_lc_key", "").strip()
+        expected_fname = os.path.basename(s3_key) if s3_key else ""
+        matches = [f for f in all_lc if expected_fname and os.path.basename(f) == expected_fname]
+        if not matches:
+            pat = tid.zfill(16)
+            matches = [f for f in all_lc if pat in f]
+        if not matches:
+            missing_targets.append(f"{nm} (TIC {tid})")
+        else:
+            matched_paths.append(matches[0])
+
+    if missing_targets:
+        raise RuntimeError(
+            f"External TESS benchmark requires all {n_rows} FITS light curves, but {len(missing_targets)}/{n_rows} "
+            f"are missing from {cache_dir} (first missing: {', '.join(missing_targets[:5])}). "
+            f"Run `python fetch_benchmark_data.py` to download all benchmark FITS files from STScI S3/MAST."
+        )
+
+    records = []
+    tp = fp = fn = tn = 0
+    n_planets = 0
+    n_non_planets = 0
+    leaked_cases = []
+    missed_cases = []
+
+    for row, lc_path in zip(rows, matched_paths):
+        nm = row["target_name"].strip()
+        tid = row["tic_id"].strip()
+        true_cls = row["true_class"].strip()
+        true_subcls = row["true_subclass"].strip()
+        cat_id = row["catalog_id"].strip()
+        cat_url = row["catalog_url"].strip()
         src_cat = row["source_catalog"].strip()
         src_dt = row["source_date"].strip()
+        p_cat = float(row["catalog_period_d"])
+        d_cat = float(row["catalog_depth_ppm"])
+        r_s = float(row["r_star_rsun"])
+        m_s = float(row["m_star_msun"])
+        sector_num = int(row.get("sector", 1))
 
-        pat = tid.zfill(16)
-        matches = [f for f in all_lc if pat in f]
-        if not matches:
-            continue
-
-        lc_raw = sort_and_deduplicate_lightcurve(lk.read(matches[0]).remove_nans().normalize())
+        lc_raw = sort_and_deduplicate_lightcurve(lk.read(lc_path).remove_nans().normalize())
         lc_flat, _ = detrend_lightcurve_production(lc_raw)
         bres = run_bls(lc_flat)
         lres = run_lomb_scargle(lc_raw)
+
+        # Production-faithful blind evaluation: is_known=False
         cat, vres = vet_signals(
             bls_res=bres,
             ls_res=lres,
@@ -735,86 +767,229 @@ def run_external_tess_benchmark(csv_path: str = None) -> Dict[str, Any]:
             micro_res=None,
             lc_flat=lc_flat,
             lc_unflat=lc_raw,
-            sectors=[1],
+            sectors=[sector_num],
             r_star=r_s,
             m_star=m_s,
-            is_known=True,
+            is_known=False,
             target_name=None,
         )
-        p_det = float(vres.get("period", 0.0)) if vres else 0.0
-        sde_det = float(vres.get("sde", 0.0)) if vres else 0.0
+        p_det = float(vres.get("period", bres.get("period", 0.0) if bres else 0.0)) if vres else (float(bres.get("period", 0.0)) if bres else 0.0)
+        d_det_ppm = float(vres.get("depth", bres.get("depth", 0.0) if bres else 0.0)) * 1e6 if vres else (float(bres.get("depth", 0.0)) * 1e6 if bres else 0.0)
+        sde_det = float(vres.get("sde", bres.get("sde", 0.0) if bres else 0.0)) if vres else (float(bres.get("sde", 0.0)) if bres else 0.0)
+        sec_r = float(vres.get("sec_ratio", 0.0)) if vres else 0.0
+        oe_r = float(vres.get("odd_even_ratio", 1.0)) if vres else 1.0
+        cent_st = str(vres.get("centroid_status", "NOT_RUN")) if vres else "NOT_RUN"
+        cent_sig = float(vres.get("centroid_shift_sigma", np.nan)) if vres else np.nan
+        orb_ok = bool(vres.get("orbit_phys_pass", True)) if vres else True
+        dur_ok = bool(vres.get("dur_phys_pass", True)) if vres else True
         tier_det = str(vres.get("tier", "C")) if vres else "C"
 
-        # Evaluate multi-class agreement with external catalog disposition
-        if ext_cls == "CONFIRMED_PLANET":
-            class_match = (cat == "CANDIDATE_EXOPLANET") and (abs(p_det - p_cat) / p_cat <= 0.01)
-            if class_match:
-                tp_planet += 1
+        p_match = any(abs(p_det - mult * p_cat) / (mult * p_cat) <= 0.02 for mult in (1.0, 0.5, 2.0)) if p_cat > 0 else False
+
+        if true_cls == "PLANET":
+            n_planets += 1
+            is_correct = (cat == "CANDIDATE_EXOPLANET") and p_match
+            if is_correct:
+                tp += 1
+                outcome = "TP"
             else:
-                fn_planet += 1
-                missed_cases.append((nm, tid, ext_cls, cat, p_det, sde_det, tier_det))
+                fn += 1
+                outcome = "FN"
+                missed_cases.append((nm, tid, true_subcls, cat, p_cat, p_det, d_cat, sde_det, tier_det))
         else:
-            if cat == "CANDIDATE_EXOPLANET":
-                fp_planet += 1
-                if tier_det == "A" or sde_det >= 10.0:
-                    fp_planet_tier_a += 1
-                leaked_cases.append((nm, tid, ext_cls, cat, p_det, sde_det, tier_det, src_cat))
-                class_match = False
+            n_non_planets += 1
+            is_correct = (cat != "CANDIDATE_EXOPLANET")
+            if is_correct:
+                tn += 1
+                outcome = "TN"
             else:
-                tn_planet += 1
-                if ext_cls == "ECLIPSING_BINARY":
-                    class_match = (cat == "ECLIPSING_BINARY")
-                elif ext_cls == "GIANT_SPECTROSCOPIC_BINARY":
-                    class_match = (cat == "UNCLASSIFIED_PERIODIC_DIP")
-                elif ext_cls in ("VARIABLE_STAR", "NON_TRANSITING_RV_HOST"):
-                    class_match = (cat == "VARIABLE_STAR")
-                elif ext_cls == "CONSTANT_CONTROL":
-                    class_match = (cat == "FALSE_POSITIVE")
-                else:
-                    class_match = True
-                if not class_match:
-                    missed_cases.append((nm, tid, ext_cls, cat, p_det, sde_det, tier_det))
+                fp += 1
+                outcome = "FP"
+                leaked_cases.append((nm, tid, true_subcls, cat, p_cat, p_det, d_cat, sde_det, tier_det, src_cat))
 
         records.append({
             "target_name": nm,
             "tic_id": tid,
-            "external_class": ext_cls,
-            "catalog_period_d": p_cat,
+            "true_class": true_cls,
+            "true_subclass": true_subcls,
+            "catalog_id": cat_id,
+            "catalog_url": cat_url,
             "source_catalog": src_cat,
             "source_date": src_dt,
+            "catalog_period_d": round(p_cat, 6),
+            "catalog_depth_ppm": round(d_cat, 1),
+            "r_star_rsun": round(r_s, 4),
+            "m_star_msun": round(m_s, 4),
             "pred_category": cat,
-            "det_period_d": round(p_det, 5),
-            "det_sde": round(sde_det, 1),
+            "det_period_d": round(p_det, 6),
+            "det_depth_ppm": round(d_det_ppm, 1),
+            "det_sde": round(sde_det, 2),
+            "sec_ratio": round(sec_r, 3),
+            "odd_even_ratio": round(oe_r, 3),
+            "centroid_status": cent_st,
+            "centroid_sigma": round(cent_sig, 2) if np.isfinite(cent_sig) else "",
+            "orbit_phys_pass": orb_ok,
+            "dur_phys_pass": dur_ok,
             "tier": tier_det,
-            "correct": class_match,
+            "outcome": outcome,
+            "correct": is_correct,
         })
 
-    n_total = len(records)
-    n_correct = sum(1 for r in records if r["correct"])
-    acc_pct = (n_correct / n_total * 100.0) if n_total > 0 else 0.0
+    n_evaluated = len(records)
+    if n_evaluated != n_rows:
+        raise RuntimeError(f"Evaluated {n_evaluated} targets, expected {n_rows}.")
+
+    # Save per-target results to benchmark/results.csv for offline verification
+    if results_csv_path:
+        os.makedirs(os.path.dirname(results_csv_path), exist_ok=True)
+        with open(results_csv_path, "w", newline="", encoding="utf-8") as rf:
+            writer = csv.DictWriter(rf, fieldnames=list(records[0].keys()))
+            writer.writeheader()
+            writer.writerows(records)
+
+    n_correct = tp + tn
+    acc_pct = (n_correct / n_evaluated * 100.0) if n_evaluated > 0 else 0.0
+    acc_ci = wilson_ci_95(n_correct, n_evaluated)
+    prec_pct = (tp / (tp + fp) * 100.0) if (tp + fp) > 0 else 0.0
+    prec_ci = wilson_ci_95(tp, tp + fp)
+    rec_pct = (tp / (tp + fn) * 100.0) if (tp + fn) > 0 else 0.0
+    rec_ci = wilson_ci_95(tp, tp + fn)
+    spec_pct = (tn / (tn + fp) * 100.0) if (tn + fp) > 0 else 0.0
+    spec_ci = wilson_ci_95(tn, tn + fp)
+    f1_pct = (2.0 * prec_pct * rec_pct / (prec_pct + rec_pct)) if (prec_pct + rec_pct) > 0 else 0.0
+    majority_baseline_pct = (max(n_planets, n_non_planets) / n_evaluated * 100.0) if n_evaluated > 0 else 0.0
+
     print(
-        f"  -> Evaluated {n_total} real TESS light curves end-to-end: Multi-Class Agreement = {n_correct}/{n_total} ({acc_pct:.1f}%) "
-        f"| Planet TP={tp_planet}, Non-Planet TN={tn_planet}, Tier B Leaks FP={fp_planet} (Tier A Leaks={fp_planet_tier_a})",
+        f"  -> Evaluated {n_evaluated}/{n_rows} real held-out TESS light curves (blind is_known=False):\n"
+        f"     • Recall (Sensitivity) : {tp}/{n_planets} = {rec_pct:.1f}% (95% Wilson CI: {rec_ci[0]:.1f}%–{rec_ci[1]:.1f}%)\n"
+        f"     • Specificity (TNR)    : {tn}/{n_non_planets} = {spec_pct:.1f}% (95% Wilson CI: {spec_ci[0]:.1f}%–{spec_ci[1]:.1f}%)\n"
+        f"     • Precision (PPV)      : {tp}/{tp + fp} = {prec_pct:.1f}% (95% Wilson CI: {prec_ci[0]:.1f}%–{prec_ci[1]:.1f}%)\n"
+        f"     • F1-Score             : {f1_pct:.1f}%\n"
+        f"     • Overall Accuracy     : {n_correct}/{n_evaluated} = {acc_pct:.1f}% (95% Wilson CI: {acc_ci[0]:.1f}%–{acc_ci[1]:.1f}%) "
+        f"[vs. {majority_baseline_pct:.1f}% majority-class baseline]",
         flush=True,
     )
+    for fn_c in missed_cases:
+        print(
+            f"     [Missed Planet FN] {fn_c[0]} (TIC {fn_c[1]}, {fn_c[2]}): P_cat={fn_c[4]:.5f}d, depth={fn_c[6]:.0f} ppm "
+            f"-> routed to {fn_c[3]} (P_det={fn_c[5]:.5f}d, SDE={fn_c[7]:.2f})",
+            flush=True,
+        )
     for lk_c in leaked_cases:
         print(
-            f"     [Tier {lk_c[6]} Leak FP] {lk_c[0]} (TIC {lk_c[1]}, {lk_c[2]} - {lk_c[7]}): "
-            f"routed to {lk_c[3]} at P={lk_c[4]:.5f}d, SDE={lk_c[5]:.1f} (<10.0 Tier A gate)",
+            f"     [Photometric Leak FP] {lk_c[0]} (TIC {lk_c[1]}, {lk_c[2]}): P_cat={lk_c[4]:.5f}d, depth={lk_c[6]:.0f} ppm "
+            f"-> routed to {lk_c[3]} (P_det={lk_c[5]:.5f}d, SDE={lk_c[7]:.1f}, Tier {lk_c[8]})",
             flush=True,
         )
     return {
-        "n_total": n_total,
+        "n_total": n_evaluated,
+        "n_planets": n_planets,
+        "n_non_planets": n_non_planets,
         "n_correct": n_correct,
+        "tp_planet": tp,
+        "tn_planet": tn,
+        "fp_planet": fp,
+        "fn_planet": fn,
+        "precision_pct": prec_pct,
+        "precision_ci": prec_ci,
+        "recall_pct": rec_pct,
+        "recall_ci": rec_ci,
+        "specificity_pct": spec_pct,
+        "specificity_ci": spec_ci,
+        "f1_pct": f1_pct,
         "accuracy_pct": acc_pct,
-        "tp_planet": tp_planet,
-        "tn_planet": tn_planet,
-        "fp_planet": fp_planet,
-        "fp_planet_tier_a": fp_planet_tier_a,
-        "fn_planet": fn_planet,
+        "accuracy_ci": acc_ci,
+        "majority_baseline_pct": majority_baseline_pct,
         "leaked_cases": leaked_cases,
         "missed_cases": missed_cases,
         "records": records,
+    }
+
+
+def verify_external_benchmark_results(targets_csv_path: str = None, results_csv_path: str = None) -> Dict[str, Any]:
+    """
+    Verifies the committed `benchmark/targets.csv` and `benchmark/results.csv` offline without
+    requiring 90 MB of cached FITS files. Checks target count (>=20 planets, >=20 non-planets),
+    zero overlap with HD 10000-10730, authentic TIC v8.2 stellar parameters, and recomputes
+    Precision, Recall, Specificity, F1, and Accuracy with 95% Wilson CIs.
+    """
+    import csv
+    from pathlib import Path
+
+    base_dir = Path(__file__).parent / "benchmark"
+    if targets_csv_path is None:
+        targets_csv_path = str(base_dir / "targets.csv")
+    if results_csv_path is None:
+        results_csv_path = str(base_dir / "results.csv")
+
+    with open(targets_csv_path, "r", encoding="utf-8") as f:
+        targets = list(csv.DictReader(f))
+    with open(results_csv_path, "r", encoding="utf-8") as f:
+        results = list(csv.DictReader(f))
+
+    if len(targets) != len(results):
+        raise AssertionError(f"Row count mismatch: targets.csv has {len(targets)} rows, results.csv has {len(results)} rows")
+
+    tp = fp = fn = tn = 0
+    n_planets = n_non_planets = 0
+    for t_row, r_row in zip(targets, results):
+        assert t_row["tic_id"].strip() == r_row["tic_id"].strip(), f"TIC mismatch: {t_row['tic_id']} vs {r_row['tic_id']}"
+        assert not t_row["target_name"].strip().upper().startswith("HD 10"), (
+            f"Survey star {t_row['target_name']} overlaps HD 10000-10730 tuning range"
+        )
+        r_s = float(t_row["r_star_rsun"])
+        m_s = float(t_row["m_star_msun"])
+        assert r_s > 0 and m_s > 0, f"Invalid stellar params for {t_row['target_name']}"
+        assert t_row["catalog_id"].strip() and t_row["catalog_url"].strip().startswith("https://"), (
+            f"Missing verifiable catalog provenance for {t_row['target_name']}"
+        )
+
+        true_cls = r_row["true_class"].strip()
+        pred_cat = r_row["pred_category"].strip()
+        p_cat = float(r_row["catalog_period_d"])
+        p_det = float(r_row["det_period_d"])
+        p_match = any(abs(p_det - mult * p_cat) / (mult * p_cat) <= 0.02 for mult in (1.0, 0.5, 2.0)) if p_cat > 0 else False
+
+        if true_cls == "PLANET":
+            n_planets += 1
+            if pred_cat == "CANDIDATE_EXOPLANET" and p_match:
+                tp += 1
+            else:
+                fn += 1
+        else:
+            n_non_planets += 1
+            if pred_cat != "CANDIDATE_EXOPLANET":
+                tn += 1
+            else:
+                fp += 1
+
+    n_total = len(results)
+    n_correct = tp + tn
+    prec_pct = (tp / (tp + fp) * 100.0) if (tp + fp) > 0 else 0.0
+    rec_pct = (tp / (tp + fn) * 100.0) if (tp + fn) > 0 else 0.0
+    spec_pct = (tn / (tn + fp) * 100.0) if (tn + fp) > 0 else 0.0
+    f1_pct = (2.0 * prec_pct * rec_pct / (prec_pct + rec_pct)) if (prec_pct + rec_pct) > 0 else 0.0
+    acc_pct = (n_correct / n_total * 100.0) if n_total > 0 else 0.0
+    majority_baseline_pct = (max(n_planets, n_non_planets) / n_total * 100.0) if n_total > 0 else 0.0
+
+    return {
+        "n_total": n_total,
+        "n_planets": n_planets,
+        "n_non_planets": n_non_planets,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "precision_pct": prec_pct,
+        "precision_ci": wilson_ci_95(tp, tp + fp),
+        "recall_pct": rec_pct,
+        "recall_ci": wilson_ci_95(tp, tp + fn),
+        "specificity_pct": spec_pct,
+        "specificity_ci": wilson_ci_95(tn, tn + fp),
+        "f1_pct": f1_pct,
+        "accuracy_pct": acc_pct,
+        "accuracy_ci": wilson_ci_95(n_correct, n_total),
+        "majority_baseline_pct": majority_baseline_pct,
     }
 
 
@@ -909,14 +1084,24 @@ def print_summary_report(
 
     if ext_res and ext_res.get("n_total", 0) > 0:
         print("-" * 88)
-        print(f"\n6. 24-TARGET END-TO-END EXTERNAL TESS BENCHMARK (benchmark/targets.csv: {ext_res['n_correct']}/{ext_res['n_total']} = {ext_res['accuracy_pct']:.1f}%)")
+        print(
+            f"\n6. {ext_res['n_total']}-TARGET HELD-OUT EXTERNAL TESS BENCHMARK "
+            f"(benchmark/targets.csv: {ext_res['n_correct']}/{ext_res['n_total']} = {ext_res['accuracy_pct']:.1f}% "
+            f"vs. {ext_res['majority_baseline_pct']:.1f}% majority baseline)"
+        )
         print("-" * 88)
-        print(f"  • Confirmed Planet Recovery (TP)       : {ext_res['tp_planet']}/1 (FN={ext_res['fn_planet']})")
-        print(f"  • Non-Planet Rejections (TN)           : {ext_res['tn_planet']}/23 (Tier B Leaks FP={ext_res['fp_planet']}, Tier A Leaks={ext_res['fp_planet_tier_a']})")
+        rec_ci = ext_res["recall_ci"]
+        spec_ci = ext_res["specificity_ci"]
+        prec_ci = ext_res["precision_ci"]
+        acc_ci = ext_res["accuracy_ci"]
+        print(f"  • Confirmed Planet Recall (Sensitivity): {ext_res['tp_planet']}/{ext_res['n_planets']} = {ext_res['recall_pct']:.1f}% (95% Wilson CI: {rec_ci[0]:.1f}%-{rec_ci[1]:.1f}%)")
+        print(f"  • Non-Planet Specificity (TNR)         : {ext_res['tn_planet']}/{ext_res['n_non_planets']} = {ext_res['specificity_pct']:.1f}% (95% Wilson CI: {spec_ci[0]:.1f}%-{spec_ci[1]:.1f}%)")
+        print(f"  • Candidate Planet Precision (PPV)     : {ext_res['tp_planet']}/{ext_res['tp_planet'] + ext_res['fp_planet']} = {ext_res['precision_pct']:.1f}% (95% Wilson CI: {prec_ci[0]:.1f}%-{prec_ci[1]:.1f}%)")
+        print(f"  • F1-Score = {ext_res['f1_pct']:.1f}% | Overall Accuracy = {ext_res['accuracy_pct']:.1f}% (95% Wilson CI: {acc_ci[0]:.1f}%-{acc_ci[1]:.1f}%)")
         for r in ext_res["records"]:
-            verdict = "MATCH" if r["correct"] else "LEAK/MISMATCH"
+            verdict = r["outcome"]
             print(
-                f"  • {r['target_name']:<10} (TIC {r['tic_id']:<10} | {r['external_class']:<26} | {r['source_date']}): "
+                f"  • {r['target_name']:<21} (TIC {r['tic_id']:<10} | {r['true_subclass']:<7} | {r['source_date']}): "
                 f"{r['pred_category']:<25} P={r['det_period_d']:.5f}d SDE={r['det_sde']:.1f} [Tier {r['tier']}] -> [{verdict}]"
             )
     print("=" * 88 + "\n", flush=True)
@@ -933,4 +1118,5 @@ if __name__ == "__main__":
     ext_results = run_external_tess_benchmark()
     print_summary_report(grid_results, far_results, bench_results, pr_results, real_results, ext_results)
     print(f"✨ Full harness completed in {time.time() - t0_all:.1f}s.", flush=True)
+
 

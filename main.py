@@ -163,27 +163,35 @@ PER_TARGET_TIMEOUT_SECONDS = 180
 
 def run_target_with_watchdog(tic_id: str, timeout_sec: float = PER_TARGET_TIMEOUT_SECONDS, target_fn=None) -> bool:
     """
-    Executes process_target(tic_id) under a strict per-target watchdog timeout.
-    Uses shutdown(wait=False, cancel_futures=True) rather than a `with` context manager
-    (whose __exit__ calls shutdown(wait=True) and would block on a hung thread).
+    Executes process_target(tic_id) in a daemon thread under a strict per-target watchdog timeout.
+    Using a daemon=True threading.Thread (rather than ThreadPoolExecutor, whose non-daemon workers
+    are joined by concurrent.futures.thread._python_exit at interpreter shutdown) guarantees both:
+      1. Immediate return when timeout_sec expires, and
+      2. Zero process hang at interpreter exit if an abandoned network thread is still blocked.
     Returns True if completed within timeout_sec, False if timed out or errored.
     """
+    import threading
     fn = target_fn if target_fn is not None else process_target
-    watchdog_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    fut = watchdog_pool.submit(fn, tic_id)
-    try:
-        fut.result(timeout=timeout_sec)
-        return True
-    except concurrent.futures.TimeoutError:
+    err_holder = []
+
+    def _worker():
+        try:
+            fn(tic_id)
+        except Exception as exc:
+            err_holder.append(exc)
+
+    worker_thread = threading.Thread(target=_worker, name=f"watchdog-{tic_id}", daemon=True)
+    worker_thread.start()
+    worker_thread.join(timeout=timeout_sec)
+    if worker_thread.is_alive():
         logger.error(f"Watchdog timeout ({timeout_sec}s) exceeded for {tic_id}; marking DOWNLOAD_ERROR.")
         update_status(tic_id, "DOWNLOAD_ERROR")
         purge_cache_for_target(tic_id)
         return False
-    except Exception as e:
-        logger.error(f"Error processing {tic_id}: {e}")
+    if err_holder:
+        logger.error(f"Error processing {tic_id}: {err_holder[0]}")
         return False
-    finally:
-        watchdog_pool.shutdown(wait=False, cancel_futures=True)
+    return True
 
 def serverless_entry(request):
     """HTTP Cloud Function entry point."""

@@ -487,6 +487,69 @@ def test_signal_free_tpf_returns_not_run_and_no_hardcoded_cache_dict():
     print("  -> Passed: 40/40 signal-free TPFs returned NOT_RUN, expected_amp mandatory, n_trials=50 cached, no hardcoded dict.")
 
 
+def test_external_tess_benchmark_and_missing_file_guard():
+    print("[Test 15] Verifying 50-target held-out external TESS benchmark (targets.csv + results.csv) and missing-file RuntimeError guard...")
+    import tempfile
+    from pathlib import Path
+    from injection_recovery import verify_external_benchmark_results, run_external_tess_benchmark
+
+    # 1. Verify committed benchmark/targets.csv and benchmark/results.csv offline
+    res = verify_external_benchmark_results()
+    assert res["n_total"] == 50, f"Expected 50 total benchmark targets, got {res['n_total']}"
+    assert res["n_planets"] >= 20, f"Expected >= 20 confirmed transiting planets, got {res['n_planets']}"
+    assert res["n_non_planets"] >= 20, f"Expected >= 20 confirmed non-planets/FPs/EBs, got {res['n_non_planets']}"
+    assert res["recall_pct"] >= 85.0, f"Expected planet recall >= 85%, got {res['recall_pct']:.1f}%"
+    assert res["specificity_pct"] >= 75.0, f"Expected non-planet specificity >= 75%, got {res['specificity_pct']:.1f}%"
+    assert res["precision_pct"] >= 80.0, f"Expected precision >= 80%, got {res['precision_pct']:.1f}%"
+    assert res["accuracy_pct"] >= res["majority_baseline_pct"] + 25.0, (
+        f"Expected accuracy ({res['accuracy_pct']:.1f}%) far above majority baseline ({res['majority_baseline_pct']:.1f}%)"
+    )
+
+    # 2. Verify run_external_tess_benchmark raises RuntimeError when a FITS file is missing (n_evaluated < n_rows)
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8") as tf:
+        tf.write(
+            "target_name,tic_id,true_class,true_subclass,catalog_period_d,catalog_depth_ppm,r_star_rsun,m_star_msun,tmag,sector,catalog_id,catalog_url,source_catalog,source_date,s3_lc_key\n"
+            "TOI 99999.01,999999999999,PLANET,TOI_CP,3.5,5000.0,1.0,1.0,10.0,1,TOI-99999.01,https://exofop.ipac.caltech.edu,Test,2026-01-01,nonexistent_lc.fits\n"
+        )
+        tmp_csv = tf.name
+    try:
+        raised = False
+        try:
+            run_external_tess_benchmark(csv_path=tmp_csv)
+        except RuntimeError as e:
+            raised = True
+            assert "missing" in str(e).lower() and "fetch_benchmark_data.py" in str(e)
+        assert raised, "run_external_tess_benchmark must raise RuntimeError when FITS files are missing"
+    finally:
+        Path(tmp_csv).unlink(missing_ok=True)
+
+    print(
+        f"  -> Passed: Held-out benchmark verified (N={res['n_total']}: TP={res['tp']}/{res['n_planets']} Recall={res['recall_pct']:.1f}%, "
+        f"TN={res['tn']}/{res['n_non_planets']} Specificity={res['specificity_pct']:.1f}%, Precision={res['precision_pct']:.1f}%) & missing-file guard verified."
+    )
+
+
+def test_linux_requirements_lock_clean():
+    print("[Test 16] Verifying requirements-lock.txt is cross-platform Linux-clean (no pywin32, torch, or extraneous AI packages)...")
+    from pathlib import Path
+
+    lock_path = Path(__file__).parent / "requirements-lock.txt"
+    assert lock_path.exists(), "requirements-lock.txt must exist"
+    lines = [
+        ln.strip()
+        for ln in lock_path.read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    assert len(lines) >= 50, f"Expected >= 50 pinned packages in requirements-lock.txt, got {len(lines)}"
+    forbidden = ("pywin32", "torch", "torchvision", "tensorflow", "timesfm", "tabpfn", "ultralytics", "opencv", "boto3")
+    for ln in lines:
+        assert "==" in ln, f"Unpinned line in requirements-lock.txt: {ln}"
+        pkg = ln.split("==")[0].strip().lower()
+        for bad in forbidden:
+            assert bad not in pkg, f"Forbidden platform/extra package '{pkg}' found in requirements-lock.txt"
+    print(f"  -> Passed: requirements-lock.txt has {len(lines)} clean cross-platform packages and zero forbidden packages.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -502,5 +565,8 @@ if __name__ == "__main__":
     test_giant_rotation_sanity_and_offline_calibration()
     test_watchdog_nonblocking_timeout_and_socket_timeout()
     test_signal_free_tpf_returns_not_run_and_no_hardcoded_cache_dict()
-    print("\n=== ALL 14 PLUMBING, WATCHDOG, CENTROID, QUADRATURE, GIANT ROTATION & CALIBRATION TESTS PASSED! ===")
+    test_external_tess_benchmark_and_missing_file_guard()
+    test_linux_requirements_lock_clean()
+    print("\n=== ALL 16 PLUMBING, WATCHDOG, CENTROID, QUADRATURE, BENCHMARK & LOCKFILE TESTS PASSED! ===")
+
 

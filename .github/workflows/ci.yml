@@ -21,12 +21,13 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install pinned dependencies
+      - name: Verify cross-platform requirements-lock.txt resolution on Linux & install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --dry-run -r requirements-lock.txt
           pip install -r requirements.txt
 
-      - name: Run Plumbing, Watchdog, Centroid, Quadrature & Giant Rotation Tests (14 tests)
+      - name: Run Plumbing, Watchdog, Centroid, Quadrature, Benchmark & Lockfile Tests (16 tests)
         run: python test_vetter_plumbing.py
 
       - name: Run Downloader Chronological Sorting & Deduplication Regression Test
@@ -35,19 +36,21 @@ jobs:
       - name: Run Offline TPF Difference-Image 95th-Percentile Calibration Verification (Read-Only)
         run: python calibrate_tpf_threshold.py --offline
 
-      - name: Verify Master Catalog Schema, Benchmark Targets & Lockfile Integrity
+      - name: Verify Master Catalog Schema, 50-Target Benchmark Results & Lockfile Integrity
         run: |
           python -c "
           import os, pandas as pd
+          from injection_recovery import verify_external_benchmark_results
           assert os.path.exists('requirements-lock.txt'), 'Missing transitive requirements-lock.txt'
-          df_b = pd.read_csv('benchmark/targets.csv')
-          assert len(df_b) >= 20, f'Expected >=20 external benchmark targets, got {len(df_b)}'
-          assert {'target_name', 'tic_id', 'external_class', 'source_catalog', 'source_date'}.issubset(df_b.columns)
+          assert os.path.exists('fetch_benchmark_data.py'), 'Missing fetch_benchmark_data.py'
+          vres = verify_external_benchmark_results()
+          assert vres['n_total'] == 50 and vres['n_planets'] == 28 and vres['n_non_planets'] == 22
           df = pd.read_csv('master_discoveries.csv')
           assert len(df) == 34, f'Expected 34 rows, got {len(df)}'
           assert 'centroid_offset_px' in df.columns, 'Missing centroid_offset_px column'
-          assert (df['pipeline_version'] == 'v2.6.0').all(), 'All rows must carry v2.6.0'
+          assert (df['pipeline_version'] == 'v2.7.0').all(), 'All rows must carry v2.7.0'
           tier_a = df[df['confidence'].str.startswith('Tier A')]['name'].tolist()
           assert set(tier_a) == {'HD 10528', 'HD 10635', 'HD 10653', 'HD 10720'}, f'Unexpected Tier A rows: {tier_a}'
-          print('Catalog & benchmark integrity check passed: 34 rows, 27 columns, v2.6.0, 4 Tier A / 14 Tier B / 16 Tier C, 24 external benchmark targets')
+          print(f'Catalog & benchmark integrity check passed: 34 rows, v2.7.0, 50 external benchmark targets (TP={vres[\"tp\"]}/28, TN={vres[\"tn\"]}/22)')
           "
+
