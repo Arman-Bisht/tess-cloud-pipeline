@@ -28,8 +28,11 @@ jobs:
           pip install --dry-run -r requirements-lock.txt
           pip install -r requirements.txt
 
-      - name: Run Plumbing, Watchdog, Centroid, Benchmark, Lockfile & Hygiene Tests (19 tests)
+      - name: Run Plumbing, Watchdog, Centroid, Benchmark, Lockfile, Network & README Hygiene Tests (20 tests)
         run: python test_vetter_plumbing.py
+
+      - name: Verify README Tables and Under-10k Character Limit (WP1)
+        run: python scripts/make_readme_tables.py --check
 
       - name: Run Downloader Chronological Sorting & Deduplication Regression Test
         run: python test_downloader_sorting.py

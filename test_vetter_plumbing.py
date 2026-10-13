@@ -692,6 +692,58 @@ def test_ci_placeholder_rules_on_branches_vs_tags():
     print("  -> Passed: Placeholders warn on normal branches but fail loudly on release tags matching v*.")
 
 
+def test_readme_table_integrity_and_character_limit():
+    print("[Test 20] Verifying README restructure, table data integrity, and documentation files (WP1)...")
+    from pathlib import Path
+    import sys
+    repo_root = Path(__file__).resolve().parent
+
+    # 1. Verify docs/ files exist and are non-empty
+    docs_dir = repo_root / "docs"
+    required_docs = [
+        "validation.md",
+        "vetting.md",
+        "benchmark.md",
+        "known_limitations.md",
+        "vsx_recovery.md",
+    ]
+    for doc in required_docs:
+        doc_path = docs_dir / doc
+        assert doc_path.exists(), f"Missing required doc file: {doc_path}"
+        assert doc_path.stat().st_size > 500, f"Doc file {doc_path} is too short or empty"
+
+    # 2. Verify README.md character count is under 10,000 characters
+    readme_path = repo_root / "README.md"
+    assert readme_path.exists(), "Missing README.md"
+    readme_text = readme_path.read_text(encoding="utf-8")
+    assert len(readme_text) <= 10000, f"README.md exceeds 10,000 characters: {len(readme_text)}"
+
+    # 3. Verify README numbers match benchmark data via scripts/make_readme_tables.py
+    sys.path.insert(0, str(repo_root / "scripts"))
+    try:
+        from make_readme_tables import load_benchmark_metrics, load_vsx_metrics, verify_readme_content
+        m = load_benchmark_metrics(repo_root)
+        v = load_vsx_metrics()
+        errors = verify_readme_content(readme_text, m, v)
+        assert len(errors) == 0, f"README table verification failed: {errors}"
+    finally:
+        if str(repo_root / "scripts") in sys.path:
+            sys.path.remove(str(repo_root / "scripts"))
+
+    # 4. Verify detrender description in architecture diagram matches code
+    assert "Savitzky-Golay" in readme_text, "Diagram must accurately describe Savitzky-Golay flattening"
+    assert "Biweight" not in readme_text, "Diagram must not claim Biweight before WP3"
+    assert "0.4 - 20.0 d" in readme_text, "Diagram must state BLS range 0.4 - 20.0 d"
+    assert "Unflattened Stream" in readme_text, "Diagram must state Lomb-Scargle runs on unflattened stream"
+
+    # 5. Verify Tier A definition and blend limits
+    assert "not astrophysical validation" in readme_text.lower(), "README must explicitly state Tier A is not validation"
+    assert "9 of 32" in readme_text, "README must report 9 of 32 Tier A benchmark targets are non-planets"
+    assert "1.0 pixel" in readme_text, "README must document ~1.0 pixel centroid blend resolution limit"
+
+    print(f"  -> Passed: README.md ({len(readme_text)} chars), tables in sync with data, all 5 docs/ files verified.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -712,7 +764,8 @@ if __name__ == "__main__":
     test_citation_cff_and_legal_hygiene()
     test_network_and_alert_hygiene()
     test_ci_placeholder_rules_on_branches_vs_tags()
-    print("\n=== ALL 19 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE, NETWORK & RELEASE HYGIENE TESTS PASSED! ===")
+    test_readme_table_integrity_and_character_limit()
+    print("\n=== ALL 20 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE, NETWORK & RELEASE HYGIENE TESTS PASSED! ===")
 
 
 
