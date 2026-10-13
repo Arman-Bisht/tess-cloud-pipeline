@@ -27,7 +27,7 @@ jobs:
           pip install --dry-run -r requirements-lock.txt
           pip install -r requirements.txt
 
-      - name: Run Plumbing, Watchdog, Centroid, Quadrature, Benchmark & Lockfile Tests (16 tests)
+      - name: Run Plumbing, Watchdog, Centroid, Benchmark, Lockfile & Hygiene Tests (17 tests)
         run: python test_vetter_plumbing.py
 
       - name: Run Downloader Chronological Sorting & Deduplication Regression Test
@@ -35,6 +35,29 @@ jobs:
 
       - name: Run Offline TPF Difference-Image 95th-Percentile Calibration Verification (Read-Only)
         run: python calibrate_tpf_threshold.py --offline
+
+      - name: Validate CITATION.cff, .zenodo.json, and Release Metadata
+        run: |
+          python -c "
+          import json, yaml, re, pathlib
+          base = pathlib.Path('.')
+          cff = yaml.safe_load((base / 'CITATION.cff').read_text(encoding='utf-8'))
+          assert cff.get('cff-version') == '1.2.0', 'Invalid cff-version'
+          assert cff.get('license') == 'MIT', 'Invalid license in CITATION.cff'
+          assert cff.get('title'), 'Missing title in CITATION.cff'
+          assert len(cff.get('authors', [])) > 0, 'No authors in CITATION.cff'
+          orcid = cff['authors'][0].get('orcid', '')
+          assert re.match(r'^https://orcid\.org/[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$', orcid), f'Invalid ORCID format: {orcid}'
+
+          zen = json.loads((base / '.zenodo.json').read_text(encoding='utf-8'))
+          assert zen.get('upload_type') == 'software', 'Invalid upload_type in .zenodo.json'
+          assert zen.get('license') == 'MIT', 'Invalid license in .zenodo.json'
+          assert len(zen.get('creators', [])) > 0, 'Missing creators in .zenodo.json'
+
+          lic = (base / 'LICENSE').read_text(encoding='utf-8')
+          assert 'MIT License' in lic, 'LICENSE must be MIT'
+          print('CI validated CITATION.cff, .zenodo.json, and LICENSE successfully.')
+          "
 
       - name: Verify Master Catalog Schema, 50-Target Benchmark Results & Lockfile Integrity
         run: |
@@ -53,4 +76,5 @@ jobs:
           assert set(tier_a) == {'HD 10528', 'HD 10635', 'HD 10653', 'HD 10720'}, f'Unexpected Tier A rows: {tier_a}'
           print(f'Catalog & benchmark integrity check passed: 34 rows, v2.7.0, 50 external benchmark targets (TP={vres[\"tp\"]}/28, TN={vres[\"tn\"]}/22)')
           "
+
 

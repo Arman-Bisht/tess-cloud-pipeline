@@ -1,0 +1,24 @@
+{
+  "title": "tess-cloud-pipeline: Automated TESS Light-Curve Mining, Vetting, and Candidate Classification",
+  "description": "An automated astronomical data-mining pipeline that ingests, detrends, and analyzes high-cadence NASA TESS photometry to detect stellar variability, eclipsing binaries, and isolated transit-like events with automated physical vetting, Target Pixel File difference imaging, and multi-catalog cross-matching.",
+  "creators": [
+    {
+      "name": "[PLACEHOLDER: AUTHOR_LAST_NAME, AUTHOR_FIRST_NAME]",
+      "affiliation": "[PLACEHOLDER: AUTHOR_AFFILIATION]",
+      "orcid": "0000-0000-0000-0000"
+    }
+  ],
+  "license": "MIT",
+  "upload_type": "software",
+  "access_right": "open",
+  "keywords": [
+    "astronomy",
+    "astrophysics",
+    "exoplanets",
+    "TESS",
+    "photometry",
+    "light-curves",
+    "transit-search",
+    "variable-stars"
+  ]
+}

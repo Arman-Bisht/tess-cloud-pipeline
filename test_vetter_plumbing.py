@@ -550,6 +550,50 @@ def test_linux_requirements_lock_clean():
     print(f"  -> Passed: requirements-lock.txt has {len(lines)} clean cross-platform packages and zero forbidden packages.")
 
 
+def test_citation_cff_and_legal_hygiene():
+    print("[Test 17] Verifying CITATION.cff, LICENSE, .zenodo.json, and CHANGELOG.md legal/release hygiene...")
+    import json, yaml, re
+    from pathlib import Path
+
+    repo_root = Path(__file__).parent
+
+    # 1. LICENSE
+    lic_file = repo_root / "LICENSE"
+    assert lic_file.exists(), "LICENSE file must exist"
+    lic_text = lic_file.read_text(encoding="utf-8")
+    assert "MIT License" in lic_text, "LICENSE must specify MIT License"
+    assert "[PLACEHOLDER: AUTHOR_NAME]" in lic_text, "LICENSE must contain author placeholder"
+
+    # 2. CITATION.cff
+    cff_file = repo_root / "CITATION.cff"
+    assert cff_file.exists(), "CITATION.cff file must exist"
+    cff = yaml.safe_load(cff_file.read_text(encoding="utf-8"))
+    assert cff.get("cff-version") == "1.2.0", f"Expected cff-version 1.2.0, got {cff.get('cff-version')}"
+    assert cff.get("license") == "MIT", f"Expected license MIT, got {cff.get('license')}"
+    assert cff.get("title"), "CITATION.cff must have a title"
+    authors = cff.get("authors", [])
+    assert len(authors) > 0, "CITATION.cff must define at least one author"
+    assert "[PLACEHOLDER: AUTHOR_LAST_NAME]" in authors[0].get("family-names", ""), "Author last name must use placeholder"
+    orcid = authors[0].get("orcid", "")
+    assert re.match(r"^https://orcid\.org/[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$", orcid), f"Invalid ORCID URI in CITATION.cff: {orcid}"
+
+    # 3. .zenodo.json
+    zen_file = repo_root / ".zenodo.json"
+    assert zen_file.exists(), ".zenodo.json file must exist"
+    zen = json.loads(zen_file.read_text(encoding="utf-8"))
+    assert zen.get("upload_type") == "software", f"Expected upload_type 'software', got {zen.get('upload_type')}"
+    assert zen.get("license") == "MIT", f"Expected license 'MIT', got {zen.get('license')}"
+    assert len(zen.get("creators", [])) > 0, ".zenodo.json must define at least one creator"
+
+    # 4. CHANGELOG.md
+    chg_file = repo_root / "CHANGELOG.md"
+    assert chg_file.exists(), "CHANGELOG.md must exist"
+    chg_text = chg_file.read_text(encoding="utf-8")
+    assert "[2.7.0]" in chg_text, "CHANGELOG.md must document v2.7.0"
+
+    print("  -> Passed: CITATION.cff (CFF 1.2.0), LICENSE (MIT), .zenodo.json, and CHANGELOG.md verified.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -567,6 +611,8 @@ if __name__ == "__main__":
     test_signal_free_tpf_returns_not_run_and_no_hardcoded_cache_dict()
     test_external_tess_benchmark_and_missing_file_guard()
     test_linux_requirements_lock_clean()
-    print("\n=== ALL 16 PLUMBING, WATCHDOG, CENTROID, QUADRATURE, BENCHMARK & LOCKFILE TESTS PASSED! ===")
+    test_citation_cff_and_legal_hygiene()
+    print("\n=== ALL 17 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE & RELEASE HYGIENE TESTS PASSED! ===")
+
 
 
