@@ -3,6 +3,7 @@ name: Astrohunter Pro CI
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
 
@@ -27,7 +28,7 @@ jobs:
           pip install --dry-run -r requirements-lock.txt
           pip install -r requirements.txt
 
-      - name: Run Plumbing, Watchdog, Centroid, Benchmark, Lockfile & Hygiene Tests (17 tests)
+      - name: Run Plumbing, Watchdog, Centroid, Benchmark, Lockfile & Hygiene Tests (19 tests)
         run: python test_vetter_plumbing.py
 
       - name: Run Downloader Chronological Sorting & Deduplication Regression Test
@@ -39,7 +40,11 @@ jobs:
       - name: Validate CITATION.cff, .zenodo.json, and Release Metadata
         run: |
           python -c "
-          import json, yaml, re, pathlib
+          import json, yaml, re, pathlib, os
+          from test_vetter_plumbing import check_citation_and_zenodo_placeholders
+          ref = os.getenv('GITHUB_REF', 'main')
+          check_citation_and_zenodo_placeholders(ref)
+
           base = pathlib.Path('.')
           cff = yaml.safe_load((base / 'CITATION.cff').read_text(encoding='utf-8'))
           assert cff.get('cff-version') == '1.2.0', 'Invalid cff-version'

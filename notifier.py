@@ -3,7 +3,7 @@ import os
 import platform
 import requests
 from typing import Dict, Any, Optional, List, Tuple
-from config import ENABLE_DISCORD, DISCORD_WEBHOOK_URL, ENABLE_TELEGRAM, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config import ALERTS_ENABLED, ENABLE_DISCORD, DISCORD_WEBHOOK_URL, ENABLE_TELEGRAM, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +11,8 @@ def send_desktop_notification(title: str, message: str):
     """
     Sends desktop notification on Windows without crashing in headless Linux.
     """
+    if not ALERTS_ENABLED:
+        return
     if platform.system() == "Windows":
         try:
             from plyer import notification
@@ -139,7 +141,12 @@ def dispatch_alert(target_name: str,
                    sectors: Optional[List[int]] = None):
     """
     Dispatches alerts to Telegram, Discord, and Desktop.
+    Guarded by ALERTS_ENABLED setting (defaults to False).
     """
+    if not ALERTS_ENABLED:
+        logger.debug(f"Alerts disabled (ALERTS_ENABLED=False); skipping alert dispatch for {target_name}.")
+        return
+
     title, plain_msg, html_msg = format_alert_message(target_name, tic_id, category, details, catalog_info, plot_path, sectors)
     
     # 1. Desktop Notification

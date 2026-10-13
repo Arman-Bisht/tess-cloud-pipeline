@@ -39,10 +39,13 @@ if env_file.exists():
     except Exception:
         pass
 
-# Webhook Config
-ENABLE_DISCORD = True
+# Webhook & Alerts Config (Defaults to False outside user-initiated live runs)
+ALERTS_ENABLED = os.getenv("ALERTS_ENABLED", "false").lower() in ("true", "1", "yes")
+
+ENABLE_DISCORD = ALERTS_ENABLED and bool(os.getenv("DISCORD_WEBHOOK_URL", ""))
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
-ENABLE_TELEGRAM = True
+ENABLE_TELEGRAM = ALERTS_ENABLED and bool(os.getenv("TELEGRAM_BOT_TOKEN", "")) and bool(os.getenv("TELEGRAM_CHAT_ID", ""))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+

@@ -13,6 +13,13 @@ import numpy as np
 import astropy.units as u
 import lightkurve as lk
 
+# Enforce offline network isolation and alert suppression (Rule 10)
+try:
+    import conftest
+    conftest.install_test_network_and_alert_guards()
+except Exception:
+    pass
+
 # 1. Test cloud-agnostic imports
 def test_cloud_agnostic_imports():
     print("Test 1: Testing cloud-agnostic imports...")
@@ -594,6 +601,97 @@ def test_citation_cff_and_legal_hygiene():
     print("  -> Passed: CITATION.cff (CFF 1.2.0), LICENSE (MIT), .zenodo.json, and CHANGELOG.md verified.")
 
 
+def check_citation_and_zenodo_placeholders(ref_name: str = "main") -> bool:
+    """
+    Validates CITATION.cff and .zenodo.json placeholders (WP0.1 C):
+    - Normal branches (e.g., 'main', 'master'): emits a warning if placeholders are present.
+    - Release tags (matching 'v*' or 'refs/tags/v*'): raises AssertionError if placeholders are present.
+    Returns True if placeholders are present, False otherwise.
+    """
+    import yaml, json, warnings
+    from pathlib import Path
+    repo_root = Path(__file__).parent
+
+    cff = yaml.safe_load((repo_root / "CITATION.cff").read_text(encoding="utf-8"))
+    zen = json.loads((repo_root / ".zenodo.json").read_text(encoding="utf-8"))
+
+    has_placeholder = False
+    # Check CFF
+    for a in cff.get("authors", []):
+        if "[PLACEHOLDER:" in str(a.get("family-names", "")) or "[PLACEHOLDER:" in str(a.get("given-names", "")):
+            has_placeholder = True
+        if "0000-0000-0000-0000" in str(a.get("orcid", "")):
+            has_placeholder = True
+
+    # Check Zenodo
+    for c in zen.get("creators", []):
+        if "[PLACEHOLDER:" in str(c.get("name", "")) or "0000-0000-0000-0000" in str(c.get("orcid", "")):
+            has_placeholder = True
+
+    is_tag = ref_name.startswith("v") or ref_name.startswith("refs/tags/v")
+    if is_tag and has_placeholder:
+        raise AssertionError(
+            f"Release tag '{ref_name}' cannot contain author/ORCID placeholders in CITATION.cff or .zenodo.json. "
+            "Please replace placeholders with authentic author details before tagging release."
+        )
+    if has_placeholder:
+        warnings.warn(
+            f"Author/ORCID placeholders detected in CITATION.cff/.zenodo.json on branch '{ref_name}'. "
+            "These placeholders are allowed on development branches but will fail CI on release tags matching v*.",
+            UserWarning
+        )
+    return has_placeholder
+
+
+def test_network_and_alert_hygiene():
+    print("[Test 18] Verifying test network isolation and alert suppression (Rule 10)...")
+    import socket
+    from config import ALERTS_ENABLED
+    from notifier import dispatch_alert
+    from conftest import ALERT_RECORDER, BlockedNetworkCallError
+
+    # 1. ALERTS_ENABLED must be False in test environment
+    assert ALERTS_ENABLED is False, "ALERTS_ENABLED must default to False in test harness"
+
+    # 2. Outbound socket connection attempts must be blocked
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    blocked = False
+    try:
+        s.connect(("8.8.8.8", 53))
+    except (BlockedNetworkCallError, RuntimeError) as e:
+        blocked = True
+        assert "blocked by test harness" in str(e).lower()
+    finally:
+        s.close()
+    assert blocked, "Outbound network socket calls must be strictly blocked during testing"
+
+    # 3. dispatch_alert must not send real alerts and must be intercepted by test recorder
+    ALERT_RECORDER.clear()
+    dispatch_alert("TEST_TARGET", "TIC 123", "CANDIDATE_EXOPLANET", {"sde": 10.0}, {}, "dummy.png")
+    assert len(ALERT_RECORDER.recorded_calls) == 1
+    assert ALERT_RECORDER.recorded_calls[0]["args"][0] == "TEST_TARGET"
+    print("  -> Passed: ALERTS_ENABLED=False, outbound sockets blocked, and alerts intercepted by recorder.")
+
+
+def test_ci_placeholder_rules_on_branches_vs_tags():
+    print("[Test 19] Verifying CI placeholder rules on development branches vs release tags (WP0.1 C)...")
+    import pytest
+
+    # 1. On branch 'main', placeholders produce a warning and pass
+    with pytest.warns(UserWarning, match="Author/ORCID placeholders detected"):
+        has_placeholders = check_citation_and_zenodo_placeholders(ref_name="main")
+    assert has_placeholders is True, "Expected placeholders detected in current dev CITATION.cff/.zenodo.json"
+
+    # 2. On a release tag matching 'v*', placeholders must FAIL loudly
+    with pytest.raises(AssertionError, match="cannot contain author/ORCID placeholders"):
+        check_citation_and_zenodo_placeholders(ref_name="v2.8.0")
+
+    with pytest.raises(AssertionError, match="cannot contain author/ORCID placeholders"):
+        check_citation_and_zenodo_placeholders(ref_name="refs/tags/v2.8.0")
+
+    print("  -> Passed: Placeholders warn on normal branches but fail loudly on release tags matching v*.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -612,7 +710,10 @@ if __name__ == "__main__":
     test_external_tess_benchmark_and_missing_file_guard()
     test_linux_requirements_lock_clean()
     test_citation_cff_and_legal_hygiene()
-    print("\n=== ALL 17 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE & RELEASE HYGIENE TESTS PASSED! ===")
+    test_network_and_alert_hygiene()
+    test_ci_placeholder_rules_on_branches_vs_tags()
+    print("\n=== ALL 19 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE, NETWORK & RELEASE HYGIENE TESTS PASSED! ===")
+
 
 
 
