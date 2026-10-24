@@ -750,9 +750,11 @@ def test_benchmark_v2_pre_registration_and_heldout_isolation():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     bench_dir = os.path.join(base_dir, "benchmark_v2")
 
-    # 1. Verify PROTOCOL.md exists and is committed
+    # 1. Verify PROTOCOL.md and PROVENANCE.md exist
     proto_path = os.path.join(bench_dir, "PROTOCOL.md")
+    prov_path = os.path.join(bench_dir, "PROVENANCE.md")
     assert os.path.exists(proto_path), "benchmark_v2/PROTOCOL.md must exist"
+    assert os.path.exists(prov_path), "benchmark_v2/PROVENANCE.md must exist"
 
     # 2. Strict held-out isolation: NO results files or plots may exist yet
     results_a = os.path.join(bench_dir, "results_set_a.csv")
@@ -785,6 +787,72 @@ def test_benchmark_v2_pre_registration_and_heldout_isolation():
     print("  -> Passed: Benchmark v2 Sets A and B verified with zero overlap and held-out isolation.")
 
 
+def test_benchmark_v2_verification_bad_csv_rejection(tmp_path):
+    print("[Test 22] Verifying that verify_benchmark_v2 strictly rejects invalid benchmark CSVs in tmp_path...")
+    import os
+    import pytest
+    import pandas as pd
+    from benchmark_v2.verify_benchmark_v2 import verify_benchmark_v2
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    bench_dir = os.path.join(base_dir, "benchmark_v2")
+    real_a = os.path.join(bench_dir, "targets_set_a.csv")
+    real_b = os.path.join(bench_dir, "targets_set_b.csv")
+
+    df_a = pd.read_csv(real_a)
+    df_b = pd.read_csv(real_b)
+
+    # 1. Deliberately corrupt Set A period (set P > 8.7 d)
+    bad_a_period = df_a.copy()
+    bad_a_period.loc[0, "catalog_period_d"] = 25.0
+    bad_a_path = str(tmp_path / "bad_a_period.csv")
+    bad_a_period.to_csv(bad_a_path, index=False)
+
+    with pytest.raises(AssertionError, match="Set A period violation"):
+        verify_benchmark_v2(a_path=bad_a_path, b_path=real_b)
+
+    # 2. Deliberately corrupt Set B period (set P <= 8.7 d)
+    bad_b_period = df_b.copy()
+    bad_b_period.loc[0, "catalog_period_d"] = 5.0
+    bad_b_path = str(tmp_path / "bad_b_period.csv")
+    bad_b_period.to_csv(bad_b_path, index=False)
+
+    with pytest.raises(AssertionError, match="Set B period violation"):
+        verify_benchmark_v2(a_path=real_a, b_path=bad_b_path)
+
+    # 3. Deliberately corrupt Set B sectors (set n_sectors < 2)
+    bad_b_sec = df_b.copy()
+    bad_b_sec.loc[0, "n_sectors"] = 1
+    bad_b_sec_path = str(tmp_path / "bad_b_sec.csv")
+    bad_b_sec.to_csv(bad_b_sec_path, index=False)
+
+    with pytest.raises(AssertionError, match="Set B minimum sectors failure"):
+        verify_benchmark_v2(a_path=real_a, b_path=bad_b_sec_path)
+
+    # 4. Deliberately corrupt Set A class mix (replace PRSA_EB with TOI_FP)
+    bad_a_mix = df_a.copy()
+    bad_a_mix.loc[bad_a_mix["true_subclass"] == "PRSA_EB", "true_subclass"] = "TOI_FP"
+    bad_a_mix_path = str(tmp_path / "bad_a_mix.csv")
+    bad_a_mix.to_csv(bad_a_mix_path, index=False)
+
+    with pytest.raises(AssertionError, match="Set A non-planet subclass violation"):
+        verify_benchmark_v2(a_path=bad_a_mix_path, b_path=real_b)
+
+    # 5. Deliberately corrupt overlap (put a burned ID into Set A)
+    burned_path = os.path.join(bench_dir, "burned_ids.txt")
+    with open(burned_path, "r", encoding="utf-8") as f:
+        first_burned_id = int(f.readline().strip())
+    bad_a_overlap = df_a.copy()
+    bad_a_overlap.loc[0, "tic_id"] = first_burned_id
+    bad_a_overlap_path = str(tmp_path / "bad_a_overlap.csv")
+    bad_a_overlap.to_csv(bad_a_overlap_path, index=False)
+
+    with pytest.raises(AssertionError, match="Burned overlap failure"):
+        verify_benchmark_v2(a_path=bad_a_overlap_path, b_path=real_b)
+
+    print("  -> Passed: All deliberately corrupted benchmark CSVs in tmp_path were caught and rejected.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -807,7 +875,11 @@ if __name__ == "__main__":
     test_ci_placeholder_rules_on_branches_vs_tags()
     test_readme_table_integrity_and_character_limit()
     test_benchmark_v2_pre_registration_and_heldout_isolation()
-    print("\n=== ALL 21 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE, NETWORK & RELEASE HYGIENE TESTS PASSED! ===")
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as td:
+        test_benchmark_v2_verification_bad_csv_rejection(Path(td))
+    print("\n=== ALL 22 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE, NETWORK & RELEASE HYGIENE TESTS PASSED! ===")
 
 
 
