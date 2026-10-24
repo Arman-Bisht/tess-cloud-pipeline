@@ -744,6 +744,47 @@ def test_readme_table_integrity_and_character_limit():
     print(f"  -> Passed: README.md ({len(readme_text)} chars), tables in sync with data, all 5 docs/ files verified.")
 
 
+def test_benchmark_v2_pre_registration_and_heldout_isolation():
+    print("[Test 21] Verifying Benchmark v2 pre-registration, held-out isolation, and zero-overlap invariants...")
+    import os
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    bench_dir = os.path.join(base_dir, "benchmark_v2")
+
+    # 1. Verify PROTOCOL.md exists and is committed
+    proto_path = os.path.join(bench_dir, "PROTOCOL.md")
+    assert os.path.exists(proto_path), "benchmark_v2/PROTOCOL.md must exist"
+
+    # 2. Strict held-out isolation: NO results files or plots may exist yet
+    results_a = os.path.join(bench_dir, "results_set_a.csv")
+    results_b = os.path.join(bench_dir, "results_set_b.csv")
+    assert not os.path.exists(results_a), "benchmark_v2/results_set_a.csv must NOT exist prior to WP8"
+    assert not os.path.exists(results_b), "benchmark_v2/results_set_b.csv must NOT exist prior to WP8"
+
+    # 3. Targets and sector tables must exist with exact counts
+    a_path = os.path.join(bench_dir, "targets_set_a.csv")
+    b_path = os.path.join(bench_dir, "targets_set_b.csv")
+    sec_b_path = os.path.join(bench_dir, "sectors_set_b.csv")
+
+    assert os.path.exists(a_path), "benchmark_v2/targets_set_a.csv must exist"
+    assert os.path.exists(b_path), "benchmark_v2/targets_set_b.csv must exist"
+    assert os.path.exists(sec_b_path), "benchmark_v2/sectors_set_b.csv must exist"
+
+    import pandas as pd
+    df_a = pd.read_csv(a_path)
+    df_b = pd.read_csv(b_path)
+    df_sec_b = pd.read_csv(sec_b_path)
+
+    assert len(df_a) == 60, f"Expected 60 rows in Set A, got {len(df_a)}"
+    assert len(df_b) == 60, f"Expected 60 rows in Set B, got {len(df_b)}"
+    assert len(df_sec_b) == 120, f"Expected 120 rows in sectors_set_b.csv, got {len(df_sec_b)}"
+
+    # 4. Run deterministic verification script
+    from benchmark_v2.verify_benchmark_v2 import verify_benchmark_v2
+    verify_benchmark_v2()
+
+    print("  -> Passed: Benchmark v2 Sets A and B verified with zero overlap and held-out isolation.")
+
+
 if __name__ == "__main__":
     test_cloud_agnostic_imports()
     test_catalog_plumbing()
@@ -765,7 +806,8 @@ if __name__ == "__main__":
     test_network_and_alert_hygiene()
     test_ci_placeholder_rules_on_branches_vs_tags()
     test_readme_table_integrity_and_character_limit()
-    print("\n=== ALL 20 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE, NETWORK & RELEASE HYGIENE TESTS PASSED! ===")
+    test_benchmark_v2_pre_registration_and_heldout_isolation()
+    print("\n=== ALL 21 PLUMBING, WATCHDOG, CENTROID, BENCHMARK, LOCKFILE, NETWORK & RELEASE HYGIENE TESTS PASSED! ===")
 
 
 

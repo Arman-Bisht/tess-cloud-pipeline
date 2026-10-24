@@ -31,8 +31,17 @@ def fetch_single_target_fits(row, cache_base: str, timeout: int = BENCHMARK_TIME
     os.makedirs(dest_dir, exist_ok=True)
     dest_path = os.path.join(dest_dir, fname)
 
+    expected_hash = str(row["fits_sha256"]).strip() if "fits_sha256" in row and pd.notna(row["fits_sha256"]) else None
+
     if os.path.exists(dest_path) and os.path.getsize(dest_path) >= 10000:
-        return {"tic_id": tic_id, "target_name": target_name, "path": dest_path, "status": "CACHED"}
+        if expected_hash:
+            import hashlib
+            with open(dest_path, "rb") as f:
+                actual_hash = hashlib.sha256(f.read()).hexdigest()
+            if actual_hash == expected_hash:
+                return {"tic_id": tic_id, "target_name": target_name, "path": dest_path, "status": "CACHED"}
+        else:
+            return {"tic_id": tic_id, "target_name": target_name, "path": dest_path, "status": "CACHED"}
 
     # Primary: Official STScI AWS Open Data S3 mirror
     s3_url = f"https://s3.amazonaws.com/stpubdata/{s3_lc_key}"
