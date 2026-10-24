@@ -97,3 +97,18 @@ A committed, deterministic verification script (`benchmark_v2/verify_benchmark_v
    * Overlap between Set A and Set B $= 0$.
 3. Cryptographic hash validity (all `fits_sha256` are valid 64-character lowercase hexadecimal strings matching downloaded files).
 4. Multi-sector constraint: Minimum $N_{\text{sectors}} \ge 2$ for all Set B targets.
+
+---
+
+## 6. Amendment (2026-10-24)
+
+To ensure balanced and unambiguous representation among non-planetary signals, the non-planet cohort in each benchmark set ($N = 30$ per set) is strictly stratified as:
+* **Exactly 15 TOI False Positives (`TOI_FP`):** Selected across diverse false positive mechanisms (centroid offsets, spectroscopic binaries, stellar activity/background blends) from the NASA Exoplanet Archive TOI catalog.
+* **Exactly 15 Confirmed Eclipsing Binaries (`PRSA_EB`):** Selected from the Prša et al. (2022) TESS Eclipsing Binary Catalog (HLSP TESS-EB / VizieR J/ApJS/258/16).
+
+All protocol rules apply uniformly to these subsets:
+* Period constraints: Set A $P \le 8.7\,\text{d}$ for all rows; Set B $8.7 < P \le 20.0\,\text{d}$ for all rows.
+* Multi-sector constraint: Set B targets must have $N_{\text{sectors}} \ge 2$ SPOC 2-minute cadence observation sectors.
+* Brightness constraint: $T_{\text{mag}} \le 13.0$ for all targets.
+* Stellar parameters: Authentic $R_\star > 0, M_\star > 0$ from TIC v8.2.
+* Disjointness: Zero overlap with `burned_ids.txt`, `benchmark/targets.csv`, HD 10000–10744 survey footprint, and mutual disjointness (Set A $\cap$ Set B $= \emptyset$).
