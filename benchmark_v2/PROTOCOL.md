@@ -112,3 +112,44 @@ All protocol rules apply uniformly to these subsets:
 * Brightness constraint: $T_{\text{mag}} \le 13.0$ for all targets.
 * Stellar parameters: Authentic $R_\star > 0, M_\star > 0$ from TIC v8.2.
 * Disjointness: Zero overlap with `burned_ids.txt`, `benchmark/targets.csv`, HD 10000–10744 survey footprint, and mutual disjointness (Set A $\cap$ Set B $= \emptyset$).
+
+---
+
+## 7. Amendment: Multi-Planet Hosts & Granular Recall/Specificity Protocols (2026-10-31)
+
+### (a) Multi-Planet Columns & Reference Catalog Provenance
+To rigorously evaluate pipeline behavior in multi-transiting exoplanet systems and multi-signal host architectures, two dedicated provenance columns are incorporated into `targets_set_a.csv` and `targets_set_b.csv`:
+* **`n_tois_on_host`:** Non-negative integer indicating the total count of TOIs associated with the target host star (`tic_id`) in the NASA Exoplanet Archive TOI reference table. Stars not indexed in the TOI table (e.g. standalone Prša et al. 2022 EBs) have `n_tois_on_host = 0`.
+* **`sibling_periods`:** Semicolon-delimited string of orbital periods (in days) for all other TOIs on the same host star (excluding the target's own catalog period, and omitting entries with undefined/NaN periods). If the host star has only a single TOI (`n_tois_on_host <= 1`) or is not a TOI target, `sibling_periods` is an empty string (`""`).
+
+These columns are constructed deterministically from the user-provided canonical NASA Exoplanet Archive TOI table:
+* **Reference Table File:** `D:\exo_planet\toi_nasa.csv`
+* **Download Date:** `2026-10-31`
+* **Cryptographic SHA-256 Checksum:** `c42771b98de943da7103d1b10accbf7b2cfac3288ed2cbc241593d59c27e1c28`
+
+### (b) Strict and Sibling-Aware Recall Definitions
+Planetary signal recovery (`true_class == 'PLANET'`, $N = 30$ in Set A, $N = 30$ in Set B) is evaluated under two explicit protocols:
+1. **Strict Recall:** A planet is recalled if and only if the top detected transit period $P_{\text{det}}$ matches the target's pre-registered catalog period $P_{\text{cat}}$ within standard period tolerance ($|\Delta P / P_{\text{cat}}| \le 1.0\%$, including direct harmonic matching at $P/2$ or $2P$), and passes all pipeline vetting criteria.
+2. **Sibling-Aware Recall:** On multi-planet host stars (`n_tois_on_host > 1`), if the pipeline's primary detection instead matches one of the documented sibling planets in the same system (matching any period in `sibling_periods` within $|\Delta P / P_{\text{sib}}| \le 1.0\%$) and passes vetting as a planet candidate, the detection is credited as valid under sibling-aware recall. This accounts for astrophysical competition where a sibling planet exhibits higher signal-to-noise or shorter period, dominating the primary BLS peak.
+
+### (c) Specificity With and Without Non-Planet Rows on Hosts With Other TOIs
+Rejection performance (`true_class == 'NON_PLANET'`, $N = 30$ in Set A, $N = 30$ in Set B) is evaluated under two distinct scopes:
+1. **Overall Specificity:** Evaluated across all 30 non-planetary targets per set (15 `TOI_FP` + 15 `PRSA_EB`). A target passes specificity if the pipeline rejects the signal (classifies as non-planet / false alarm / eclipsing binary).
+2. **Isolated-Host Specificity (excluding hosts with other TOIs):** Evaluated after excluding non-planet targets that reside on host stars possessing other documented TOIs (`n_tois_on_host > 1` for `TOI_FP`, or `n_tois_on_host > 0` for `PRSA_EB`). Specifically:
+   * In Set B, `TOI 2448.01` (`TOI_FP`, TIC 231721005) shares its host with planetary candidate `TOI 2448.02` ($P = 19.757918\,\text{d}$).
+   * In addition, three eclipsing binary hosts (`TESS-EB TIC 313506357` in Set A; `TESS-EB TIC 260128333` and `TESS-EB TIC 308050066` in Set B) have associated TOI entries.
+   Reporting specificity both across the full cohort and restricted to isolated hosts ensures transparent diagnostics: genuine planet detections on multi-signal hosts are not conflated with false-positive vetting failures.
+
+### (d) Expected-Recall Statement
+Set B evaluates challenging long-period and shallow-transit observational regimes:
+* **15 of 30 Set B planets** feature shallow transit depths under 1,000 ppm ($< 1000\,\text{ppm}$).
+* **4 of 30 Set B planets** feature orbital periods $P > \sim 17.4\,\text{days}$ (`TOI 1055.01` at $17.47\,\text{d}$, `TOI 3362.01` at $18.10\,\text{d}$, `TOI 560.02` at $18.88\,\text{d}$, and `TOI 5065.01` at $19.49\,\text{d}$).
+Within 2-sector SPOC observations (effective baseline 27–54 days), orbital periods near 17–20 days yield only 2 to 3 transit events, while sub-1,000 ppm signals approach the photometric noise floor of TESS. Benchmark recall on Set B is naturally constrained by these observational physical limits, establishing a realistic sensitivity baseline.
+
+### (e) Evaluation Reporting Mandate
+The final held-out benchmark evaluation (WP8) will explicitly report all of the following:
+1. Strict Recall (Set A, Set B, and Combined).
+2. Sibling-Aware Recall (Set A, Set B, and Combined).
+3. Overall Specificity (Set A, Set B, and Combined).
+4. Isolated-Host Specificity (excluding non-planet targets on hosts with other TOIs).
+5. Granular recall broken down by transit depth bins ($< 1000\,\text{ppm}$, $1000\text{–}2500\,\text{ppm}$, $> 2500\,\text{ppm}$) and orbital period bins.
