@@ -851,11 +851,11 @@ def test_benchmark_v2_verification_bad_csv_rejection(tmp_path):
         verify_benchmark_v2(a_path=bad_a_overlap_path, b_path=real_b)
 
     # 6. Deliberately drop multi-planet column (WP2.1 Amendment)
-    bad_a_nocol = df_a.drop(columns=["n_tois_on_host"])
+    bad_a_nocol = df_a.drop(columns=["credited_sibling_periods"])
     bad_a_nocol_path = str(tmp_path / "bad_a_nocol.csv")
     bad_a_nocol.to_csv(bad_a_nocol_path, index=False)
 
-    with pytest.raises(AssertionError, match="missing required multi-planet columns"):
+    with pytest.raises(AssertionError, match="missing required multi-planet column: credited_sibling_periods"):
         verify_benchmark_v2(a_path=bad_a_nocol_path, b_path=real_b)
 
     # 7. Deliberately corrupt sibling period format
@@ -866,6 +866,15 @@ def test_benchmark_v2_verification_bad_csv_rejection(tmp_path):
 
     with pytest.raises(AssertionError, match="invalid sibling_period"):
         verify_benchmark_v2(a_path=bad_a_sib_path, b_path=real_b)
+
+    # 8. Deliberately corrupt credited sibling period format
+    bad_a_cred = df_a.copy()
+    bad_a_cred.loc[bad_a_cred["credited_sibling_periods"].notna() & (bad_a_cred["credited_sibling_periods"] != ""), "credited_sibling_periods"] = "bad_cred"
+    bad_a_cred_path = str(tmp_path / "bad_a_cred.csv")
+    bad_a_cred.to_csv(bad_a_cred_path, index=False)
+
+    with pytest.raises(AssertionError, match="invalid credited_sibling_period"):
+        verify_benchmark_v2(a_path=bad_a_cred_path, b_path=real_b)
 
     print("  -> Passed: All deliberately corrupted benchmark CSVs in tmp_path were caught and rejected.")
 

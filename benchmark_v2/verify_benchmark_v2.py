@@ -52,7 +52,7 @@ def verify_benchmark_v2(
     dev_path = dev_path or os.path.join(base_dir, "benchmark", "targets.csv")
     db_path = db_path or os.path.join(base_dir, "astrohunter.db")
     md_path = md_path or os.path.join(base_dir, "master_discoveries.csv")
-    toi_nasa_path = toi_nasa_path or os.path.join(os.path.dirname(base_dir), "toi_nasa.csv")
+    toi_nasa_path = toi_nasa_path or os.path.join(bench_dir, "reference", "toi_nasa_2026-10-31.csv")
 
     # Load targets
     if not os.path.exists(a_path) or not os.path.exists(b_path):
@@ -220,9 +220,11 @@ def verify_benchmark_v2(
             raise AssertionError(f"{name} has targets with invalid stellar radius or mass")
 
     # 9. Multi-planet columns and sibling period validation (WP2.1 Amendment)
+    req_multi_cols = ["n_tois_on_host", "sibling_periods", "sibling_dispositions", "credited_sibling_periods"]
     for name, df_set in [("Set A", df_a), ("Set B", df_b)]:
-        if "n_tois_on_host" not in df_set.columns or "sibling_periods" not in df_set.columns:
-            raise AssertionError(f"{name} missing required multi-planet columns: n_tois_on_host, sibling_periods")
+        for c in req_multi_cols:
+            if c not in df_set.columns:
+                raise AssertionError(f"{name} missing required multi-planet column: {c}")
 
         if (df_set["n_tois_on_host"] < 0).any() or df_set["n_tois_on_host"].isna().any():
             raise AssertionError(f"{name} has invalid n_tois_on_host values")
@@ -236,6 +238,16 @@ def verify_benchmark_v2(
                             raise ValueError()
                     except ValueError:
                         raise AssertionError(f"{name} row {idx} has invalid sibling_period: '{p_str}' in '{val}'")
+
+        for idx, val in enumerate(df_set["credited_sibling_periods"]):
+            if pd.notna(val) and str(val).strip() != "" and str(val) != "nan":
+                for p_str in str(val).split(";"):
+                    try:
+                        p_flt = float(p_str)
+                        if p_flt <= 0:
+                            raise ValueError()
+                    except ValueError:
+                        raise AssertionError(f"{name} row {idx} has invalid credited_sibling_period: '{p_str}' in '{val}'")
 
     n_a_multi = int((df_a["n_tois_on_host"] > 1).sum())
     n_b_multi = int((df_b["n_tois_on_host"] > 1).sum())
@@ -252,37 +264,73 @@ def verify_benchmark_v2(
     if n_b_long != 4:
         raise AssertionError(f"Set B long-period planets (> 17.4 d) mismatch: {n_b_long} != 4")
 
-    # 10. Exact reference check against NASA TOI table if available
-    if os.path.exists(toi_nasa_path):
-        import hashlib
-        with open(toi_nasa_path, "rb") as f:
-            nasa_hash = hashlib.sha256(f.read()).hexdigest().lower()
-        expected_nasa_hash = "c42771b98de943da7103d1b10accbf7b2cfac3288ed2cbc241593d59c27e1c28"
-        if nasa_hash != expected_nasa_hash:
-            raise AssertionError(f"NASA TOI reference table hash mismatch: {nasa_hash} != {expected_nasa_hash}")
+    # 10. Exact reference check against repo-local NASA TOI table
+    if not os.path.exists(toi_nasa_path):
+        raise FileNotFoundError(f"Missing mandatory NASA TOI reference table: {toi_nasa_path}")
 
-        df_nasa = pd.read_csv(toi_nasa_path)
-        df_nasa["tid_int"] = df_nasa["tid"].astype(int)
-        df_nasa["toi_float"] = df_nasa["toi"].astype(float)
+    import hashlib
+    with open(toi_nasa_path, "rb") as f:
+        nasa_hash = hashlib.sha256(f.read()).hexdigest().lower()
+    expected_nasa_hash = "c42771b98de943da7103d1b10accbf7b2cfac3288ed2cbc241593d59c27e1c28"
+    if nasa_hash != expected_nasa_hash:
+        raise AssertionError(f"NASA TOI reference table hash mismatch: {nasa_hash} != {expected_nasa_hash}")
 
-        for name, df_set in [("Set A", df_a), ("Set B", df_b)]:
-            for _, r in df_set.iterrows():
-                tid = int(r["tic_id"])
-                matches = df_nasa[df_nasa["tid_int"] == tid]
-                if int(r["n_tois_on_host"]) != len(matches):
-                    raise AssertionError(f"{name} TIC {tid} n_tois_on_host mismatch: {r['n_tois_on_host']} != {len(matches)}")
+    df_nasa = pd.read_csv(toi_nasa_path)
+    df_nasa["tid_int"] = df_nasa["tid"].astype(int)
+    df_nasa["toi_float"] = df_nasa["toi"].astype(float)
 
-                cat_id = str(r["catalog_id"])
-                if cat_id.startswith("TOI-"):
-                    target_toi = float(cat_id.replace("TOI-", ""))
-                    sibs = matches[matches["toi_float"] != target_toi]
-                    expected_pers = [str(float(p)) for p in sibs["pl_orbper"] if pd.notna(p) and float(p) > 0]
-                    actual_pers = [p for p in str(r["sibling_periods"]).split(";") if p and p != "nan"]
-                    if expected_pers != actual_pers:
-                        raise AssertionError(f"{name} TIC {tid} sibling_periods mismatch: {actual_pers} != {expected_pers}")
-                else:
-                    if pd.notna(r["sibling_periods"]) and str(r["sibling_periods"]).strip() != "" and str(r["sibling_periods"]) != "nan":
-                        raise AssertionError(f"{name} PRSA_EB TIC {tid} non-empty sibling_periods: {r['sibling_periods']}")
+    for name, df_set in [("Set A", df_a), ("Set B", df_b)]:
+        for _, r in df_set.iterrows():
+            tid = int(r["tic_id"])
+            matches = df_nasa[df_nasa["tid_int"] == tid]
+            if int(r["n_tois_on_host"]) != len(matches):
+                raise AssertionError(f"{name} TIC {tid} n_tois_on_host mismatch: {r['n_tois_on_host']} != {len(matches)}")
+
+            cat_id = str(r["catalog_id"])
+            if cat_id.startswith("TOI-"):
+                target_toi = float(cat_id.replace("TOI-", ""))
+                sibs = matches[matches["toi_float"] != target_toi]
+
+                p_list = []
+                d_list = []
+                cred_list = []
+                for _, s in sibs.iterrows():
+                    p = s["pl_orbper"]
+                    disp = str(s["tfopwg_disp"])
+                    if pd.notna(p) and float(p) > 0:
+                        p_str = str(float(p))
+                        p_list.append(p_str)
+                        d_list.append(disp)
+                        if disp in ["CP", "KP"]:
+                            cred_list.append(p_str)
+
+                expected_pers = ";".join(p_list)
+                expected_disps = ";".join(d_list)
+                expected_creds = ";".join(cred_list)
+
+                actual_pers = "" if pd.isna(r["sibling_periods"]) else str(r["sibling_periods"])
+                actual_disps = "" if pd.isna(r["sibling_dispositions"]) else str(r["sibling_dispositions"])
+                actual_creds = "" if pd.isna(r["credited_sibling_periods"]) else str(r["credited_sibling_periods"])
+
+                if actual_pers != expected_pers:
+                    raise AssertionError(f"{name} TIC {tid} sibling_periods mismatch: '{actual_pers}' != '{expected_pers}'")
+                if actual_disps != expected_disps:
+                    raise AssertionError(f"{name} TIC {tid} sibling_dispositions mismatch: '{actual_disps}' != '{expected_disps}'")
+                if actual_creds != expected_creds:
+                    raise AssertionError(f"{name} TIC {tid} credited_sibling_periods mismatch: '{actual_creds}' != '{expected_creds}'")
+            else:
+                for col in ["sibling_periods", "sibling_dispositions", "credited_sibling_periods"]:
+                    val = r[col]
+                    if pd.notna(val) and str(val).strip() != "" and str(val) != "nan":
+                        raise AssertionError(f"{name} PRSA_EB TIC {tid} non-empty {col}: {val}")
+
+    # Count credited sibling targets
+    n_a_credited = int((df_a["credited_sibling_periods"].notna() & (df_a["credited_sibling_periods"] != "") & (df_a["credited_sibling_periods"] != "nan")).sum())
+    n_b_credited = int((df_b["credited_sibling_periods"].notna() & (df_b["credited_sibling_periods"] != "") & (df_b["credited_sibling_periods"] != "nan")).sum())
+    if n_a_credited != 4:
+        raise AssertionError(f"Set A credited sibling targets mismatch: {n_a_credited} != 4")
+    if n_b_credited != 7:
+        raise AssertionError(f"Set B credited sibling targets mismatch: {n_b_credited} != 7")
 
     # Output report
     print("=== Benchmark v2 Verification Report ===")
@@ -297,7 +345,7 @@ def verify_benchmark_v2(
     print(f"Set B periods: min={set_b_p_min:.4f} d, max={set_b_p_max:.4f} d (all in (8.7, 20.0] d)")
     print(f"Set A classes: {n_a_planets} planets ({n_a_shallow} shallow <= 2500 ppm), {n_a_fp} TOI_FP, {n_a_eb} PRSA_EB")
     print(f"Set B classes: {n_b_planets} planets, {n_b_fp} TOI_FP, {n_b_eb} PRSA_EB")
-    print(f"Multi-TOI hosts: Set A={n_a_multi} (all planets), Set B={n_b_multi} (9 planets, 1 TOI_FP)")
+    print(f"Multi-TOI hosts: Set A={n_a_multi} ({n_a_credited} with credited siblings), Set B={n_b_multi} ({n_b_credited} with credited siblings, 1 TOI_FP)")
     print(f"Set B expected-recall cohorts: {n_b_shallow}/30 shallow (< 1000 ppm), {n_b_long}/30 long-period (> 17.4 d)")
     print(f"Max Tmag: Set A={max_tmag_a:.2f}, Set B={max_tmag_b:.2f} (all <= 13.0)")
     print("STATUS: VERIFIED")
