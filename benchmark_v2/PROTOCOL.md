@@ -153,3 +153,36 @@ The final held-out benchmark evaluation (WP8) will explicitly report all of the 
 3. Overall Specificity (Set A, Set B, and Combined).
 4. Isolated-Host Specificity (excluding non-planet targets on hosts with other TOIs).
 5. Granular recall broken down by transit depth bins ($< 1000\,\text{ppm}$, $1000\text{–}2500\,\text{ppm}$, $> 2500\,\text{ppm}$) and orbital period bins.
+
+---
+
+## 8. Amendment: Credited Sibling Periods & Period Matching Pre-Registration (2026-11-02)
+
+### (a) Credited Sibling Periods & Non-Confirmed Dispositions
+To prevent false-alarm credits in multi-planet recall assessment, sibling signals are strictly partitioned by their confirmation status in the reference catalog (`benchmark_v2/reference/toi_nasa_2026-10-31.csv`):
+* **`sibling_dispositions`:** Semicolon-delimited list recording the TFOPWG disposition of each sibling in `sibling_periods` in identical order (e.g. `CP;PC` or `KP;KP`).
+* **`credited_sibling_periods`:** Semicolon-delimited list containing **ONLY** siblings whose TFOPWG disposition is confirmed planet (`CP`) or known planet (`KP`).
+* **Non-Credited Dispositions:** Sibling entries classified as Planet Candidate (`PC`), Ambiguous Planet Candidate (`APC`), False Alarm (`FA`), or False Positive (`FP`) are cataloged in `sibling_periods` and `sibling_dispositions` for full observational transparency, but are **never** included in `credited_sibling_periods` and cannot credit a detection toward recall. Specifically:
+  * In Set A, `TOI 1782.02` records sibling `TOI 1782.03` (`PC`, $18.7559765\,\text{d}$), which is uncredited; only `TOI 1782.01` (`CP`, $4.9877056\,\text{d}$) is credited.
+  * In Set B, `TOI 712.01` records sibling `TOI 712.03` (`FA`, $53.746482\,\text{d}$), which is uncredited; `TOI 1670.02` records sibling `TOI 1670.03` (`PC`, $123.050751\,\text{d}$), which is uncredited; and `TOI 2081.01` records sibling `TOI 2081.02` (`PC`, $5.1096561\,\text{d}$), yielding an empty credited list.
+  * `TOI 2448.01` (`TOI_FP`) records sibling candidate `TOI 2448.02` (`PC`, $19.757918\,\text{d}$), yielding an empty credited list.
+  * `TOI 2319.02` (`TOI_KP`) has sibling `TOI 2319.01` classified as `CP`, but because `TOI 2319.01` has no orbital period recorded in the reference table (`pl_orbper` is NaN/null), it receives an empty credited list (`""`).
+
+### (b) Pre-Registered Sibling-Aware Recall Definition
+Sibling-aware recall is formally defined as:
+* A planetary target (`true_class == 'PLANET'`) is successfully recalled if and only if the primary detected period $P_{\text{det}}$ matches either:
+  1. The target's pre-registered catalog period $P_{\text{cat}}$ within the primary period tolerance ($|\Delta P / P_{\text{cat}}| \le 1.0\%$, including direct harmonic matching at $P/2$ or $2P$), **OR**
+  2. Any orbital period explicitly listed in `credited_sibling_periods` within the same tolerance ($|\Delta P / P_{\text{cred}}| \le 1.0\%$, including $P/2$ or $2P$),
+  AND the signal satisfies all pipeline vetting criteria. Matches to unconfirmed (`PC`, `APC`) or spurious (`FA`, `FP`) siblings receive zero recall credit.
+
+### (c) Specificity "With" and "Without" Hosts Bearing Any Other TOI
+Specificity evaluates the rejection of non-planetary targets (`true_class == 'NON_PLANET'`, $N = 30$ in Set A, $N = 30$ in Set B):
+* **Specificity "With" (Overall):** Evaluated across all 30 non-planet targets per set (15 `TOI_FP` + 15 `PRSA_EB`). A target passes specificity if the pipeline rejects the candidate (classifies as non-planet / false alarm / eclipsing binary).
+* **Specificity "Without" (Isolated Hosts):** Evaluated after excluding non-planet targets residing on any host star cataloged with any other TOI in the reference catalog (`n_tois_on_host > 1` for `TOI_FP`, or `n_tois_on_host > 0` for `PRSA_EB`).
+  * In Set B, this excludes `TOI 2448.01` (`TOI_FP` with candidate sibling `TOI 2448.02`), `TESS-EB TIC 260128333` (EB host with `TOI 1338.01`), and `TESS-EB TIC 308050066` (EB host with `TOI 679.01`).
+  * In Set A, this excludes `TESS-EB TIC 313506357` (EB host with `TOI 1383.01`).
+  This dual reporting isolates true classifier rejection accuracy from cases where a pipeline detects a genuine astrophysical planet or candidate on a multi-signal host.
+
+### (d) Pre-Registration of Period Matching Window: 1.0% Primary vs. 2.0% Sensitivity Analysis
+* **Primary Metric (1.0% Tolerance):** High-precision SPOC 2-minute cadence data over 27- to 54-day baselines yields typical period determination accuracy within $\pm 0.1\%\text{--}0.5\%$ for bona fide planetary transits. A tight 1.0% window (with $P/2$ and $2P$ harmonics) is pre-registered as the primary matching standard to minimize accidental matches to stellar rotation, instrumental quasi-periodicities, or unrelated signals.
+* **Secondary Sensitivity Analysis (2.0% Tolerance):** While the earlier development benchmark (`benchmark/targets.csv`) employed a wider 2.0% window during preliminary heuristic tuning, Benchmark v2 mandates 1.0% as the primary pre-registered standard. To ensure direct continuity and backwards comparability with development benchmark publications, the held-out evaluation in WP8 will also report performance under 2.0% tolerance as a formal sensitivity analysis.
