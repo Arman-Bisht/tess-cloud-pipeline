@@ -186,3 +186,22 @@ Specificity evaluates the rejection of non-planetary targets (`true_class == 'NO
 ### (d) Pre-Registration of Period Matching Window: 1.0% Primary vs. 2.0% Sensitivity Analysis
 * **Primary Metric (1.0% Tolerance):** High-precision SPOC 2-minute cadence data over 27- to 54-day baselines yields typical period determination accuracy within $\pm 0.1\%\text{--}0.5\%$ for bona fide planetary transits. A tight 1.0% window (with $P/2$ and $2P$ harmonics) is pre-registered as the primary matching standard to minimize accidental matches to stellar rotation, instrumental quasi-periodicities, or unrelated signals.
 * **Secondary Sensitivity Analysis (2.0% Tolerance):** While the earlier development benchmark (`benchmark/targets.csv`) employed a wider 2.0% window during preliminary heuristic tuning, Benchmark v2 mandates 1.0% as the primary pre-registered standard. To ensure direct continuity and backwards comparability with development benchmark publications, the held-out evaluation in WP8 will also report performance under 2.0% tolerance as a formal sensitivity analysis.
+
+---
+
+## 9. Amendment: Fundamental Period Matching Standard & Superseding Recall Rules (2026-11-03)
+
+### (a) Superseding Sibling-Aware Recall Rule
+The definition of `credited_sibling_periods` in Amendment 8 formally **SUPERSEDES** the preliminary sibling-aware recall definition in Section 7. Sibling-aware recall evaluates only matches to entries explicitly listed in `credited_sibling_periods` (confirmed planets `CP` or known planets `KP`). Unconfirmed candidates (`PC`, `APC`) and false alarms/positives (`FA`, `FP`) never count toward sibling-aware recall under any circumstance.
+
+### (b) Primary vs. Secondary Harmonic-Inclusive Metric Specification
+* **Primary Recall Metric (Fundamental Period Only):** The primary benchmark recall metric accepts a detection if and only if the primary detected period matches the fundamental catalog period within $\le 1.0\%$ ($|\Delta P / P_{\text{cat}}| \le 0.010$). Sibling-aware recall similarly requires matching the fundamental period of an entry in `credited_sibling_periods` within $\le 1.0\%$.
+* **Rationale:** In the development benchmark evaluation, all 24 true positive planet detections matched the fundamental orbital period (median period deviation of $0.12\%$, maximum deviation of $0.27\%$). Therefore, enforcing fundamental period matching costs zero sensitivity while rigorously protecting against crediting wrong-period or harmonic artifacts.
+* **Secondary Metric (Harmonic-Inclusive):** Detections matching at half-period ($P/2$) or double-period ($2P$) within $\le 1.0\%$ are not credited under the primary metric, but will be reported separately as a secondary harmonic-inclusive metric for completeness.
+
+### (c) Classification Criterion for Recall
+A pipeline detection counts toward recall if and only if the pipeline's predicted classification category is strictly `CANDIDATE_EXOPLANET` (`pred_category == CANDIDATE_EXOPLANET`) and satisfies the period matching criteria above. Detections classified under any other disposition (e.g. `FALSE_POSITIVE`, `ECLIPSING_BINARY`, or unvetted) receive zero recall credit.
+
+### (d) Sensitivity Analysis & Development Benchmark Baseline
+* **Sensitivity Analysis:** The 2.0% period tolerance window ($|\Delta P / P| \le 0.020$) remains pre-registered as a secondary sensitivity analysis to evaluate robustness against wider matching windows.
+* **Development Benchmark Baseline:** Under every evaluated rule and tolerance variation (1.0% fundamental, harmonic-inclusive, or 2.0%), the development benchmark baseline performance remains exactly **24/28** planet recall.
