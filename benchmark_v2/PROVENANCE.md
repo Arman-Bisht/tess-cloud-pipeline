@@ -1,9 +1,9 @@
-# Benchmark v2 Spot-Check Provenance Audit
+﻿# Benchmark v2 Spot-Check Provenance Audit
 
 **Protocol Status:** Registered & Locked  
 **Audit Seed:** `7319042`  
 **Sample Size:** 10 targets selected deterministically across Benchmark v2 (Sets A and B)  
-**Verification State:** UNCHECKED (Awaiting human/external provenance review)  
+**Verification State:** Partial human check completed; see "Audit record" at the end of this file
 
 ---
 
@@ -47,7 +47,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0017/0000/0003/6651/7381/tess2019279210107-s0017-0000000366517381-0161-s_lc.fits`
   * **Primary SHA-256:** `7f89fe8b797936d33950f20506b44941494cdc6b9f85174680dda1ac1eca2919`
 
-- [ ] **Target 4: TOI 5954.01** (TIC 297153209)
+- [x] **Target 4: TOI 5954.01** (TIC 297153209)
   * **Benchmark Set:** Set B
   * **Ground Truth:** `NON_PLANET` (TOI_FP)
   * **Orbital Period:** 10.7005 days
@@ -59,7 +59,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0075/0000/0002/9715/3209/tess2024030031500-s0075-0000000297153209-0270-s_lc.fits`
   * **Primary SHA-256:** `f361faf35d599a52a253c9c66e6da21742e6dd7c64e29ae61c56c5e217201db2`
 
-- [ ] **Target 5: TOI 1963.01** (TIC 190271688)
+- [x] **Target 5: TOI 1963.01** (TIC 190271688)
   * **Benchmark Set:** Set B
   * **Ground Truth:** `NON_PLANET` (TOI_FP)
   * **Orbital Period:** 12.6535 days
@@ -83,7 +83,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0012/0000/0002/0751/1576/tess2019140104343-s0012-0000000207511576-0144-s_lc.fits`
   * **Primary SHA-256:** `16108841b24d56e839634ddb2d413329ab57bf64b2776e0d605d44b2056c1973`
 
-- [ ] **Target 7: TOI 5788.02** (TIC 42883782)
+- [x] **Target 7: TOI 5788.02** (TIC 42883782)
   * **Benchmark Set:** Set A
   * **Ground Truth:** `PLANET` (TOI_CP)
   * **Orbital Period:** 6.3346 days
@@ -95,7 +95,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0014/0000/0000/4288/3782/tess2019198215352-s0014-0000000042883782-0150-s_lc.fits`
   * **Primary SHA-256:** `85053dbcc633c2b2ca539680fe3488540e1c50e8b0353e6d9669d0183d2ac36c`
 
-- [ ] **Target 8: TOI 4037.01** (TIC 367287018)
+- [x] **Target 8: TOI 4037.01** (TIC 367287018)
   * **Benchmark Set:** Set A
   * **Ground Truth:** `NON_PLANET` (TOI_FP)
   * **Orbital Period:** 4.7257 days
@@ -107,7 +107,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0052/0000/0003/6728/7018/tess2022138205153-s0052-0000000367287018-0224-s_lc.fits`
   * **Primary SHA-256:** `31c6e154f58c9939e2a2bc90626bdff769d22feeebbb871596849d954140fb6a`
 
-- [ ] **Target 9: TOI 3362.01** (TIC 464300749)
+- [x] **Target 9: TOI 3362.01** (TIC 464300749)
   * **Benchmark Set:** Set B
   * **Ground Truth:** `PLANET` (TOI_CP)
   * **Orbital Period:** 18.0953 days
@@ -119,7 +119,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0063/0000/0004/6430/0749/tess2023069172124-s0063-0000000464300749-0255-s_lc.fits`
   * **Primary SHA-256:** `234e0dc37a22bf1bf9bc496320bd77c0c94da9289c2e054ea03aee2e64cdf709`
 
-- [ ] **Target 10: TOI 260.01** (TIC 37749396)
+- [x] **Target 10: TOI 260.01** (TIC 37749396)
   * **Benchmark Set:** Set B
   * **Ground Truth:** `PLANET` (TOI_CP)
   * **Orbital Period:** 13.4758 days
@@ -132,4 +132,10 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **Primary SHA-256:** `939ea7bbd43435e665bf4b71cf50fb6d91229294de5cdbe1ae0c9a915974fc77`
 
 
-Human spot-check (Arman Bisht, <the real date>): 10 ExoFOP pages viewed; TIC, Tmag, period and planet status matched. NASA TOI table (downloaded 2026-10-31, SHA-256 c42771b98de943da7103d1b10accbf7b2cfac3288ed2cbc241593d59c27e1c28, stored in benchmark_v2/reference): 90/90 TOI rows match; credited_sibling_periods for all 14 multi-TOI rows checked against the table by the user.
+
+## Audit record (updated 2026-11-07)
+- ExoFOP pages for all 10 targets were opened and read by Arman Bisht on 2026-10-27. Checked on the pages: TIC ID, Tmag, TOI period and planet status (confirmed planet, no confirmed planet, or no TOI). For the 4 eclipsing-binary rows (TIC 307216760, 327583823, 366517381, 207511576) ExoFOP shows no TOI, so their period and depth are NOT covered by this check.
+- VizieR check of the period for the 4 eclipsing-binary rows: PENDING.
+- NASA TOI table (downloaded 2026-10-31, SHA-256 c42771b98de943da7103d1b10accbf7b2cfac3288ed2cbc241593d59c27e1c28, stored in benchmark_v2/reference): all 90 TOI rows in Sets A and B match on TIC, disposition, period, depth, Tmag and stellar radius. This comparison was run by an AI assistant (Claude) on the downloaded file. The benchmark was built from the same table, so it checks transcription, not the source itself.
+- credited_sibling_periods for the 14 multi-TOI rows were compared with the table by Arman Bisht on 2026-11-07 (all matched).
+- Stellar mass: TOI 303.01 was checked directly on ExoFOP (TIC mass 1.0 +/- 0.128).
