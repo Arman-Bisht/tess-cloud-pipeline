@@ -131,3 +131,5 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0003/0000/0000/3774/9396/tess2018263035959-s0003-0000000037749396-0123-s_lc.fits`
   * **Primary SHA-256:** `939ea7bbd43435e665bf4b71cf50fb6d91229294de5cdbe1ae0c9a915974fc77`
 
+
+Human spot-check (<your name>, 2026-11-02): 10 ExoFOP pages viewed; TIC, Tmag, period and planet status matched. NASA TOI table (downloaded 2026-10-31, SHA-256 c42771b98de943da7103d1b10accbf7b2cfac3288ed2cbc241593d59c27e1c28, stored in benchmark_v2/reference): 90/90 TOI rows match; credited_sibling_periods for all 14 multi-TOI rows checked against the table by the user.
