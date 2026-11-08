@@ -11,7 +11,7 @@
 
 The following 10 targets were sampled using protocol PRNG seed `7319042` for independent verification against canonical community archives (ExoFOP-TESS, NASA Exoplanet Archive, VizieR). All check-boxes are intentionally left unchecked per protocol requirements until independent audit.
 
-- [ ] **Target 1: TESS-EB TIC 307216760** (TIC 307216760)
+- [x] **Target 1: TESS-EB TIC 307216760** (TIC 307216760)
   * **Benchmark Set:** Set A
   * **Ground Truth:** `NON_PLANET` (PRSA_EB)
   * **Orbital Period:** 0.7340 days
@@ -23,7 +23,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0010/0000/0003/0721/6760/tess2019085135100-s0010-0000000307216760-0140-s_lc.fits`
   * **Primary SHA-256:** `1cd4767da427ae1791ead32247cb566cb2d3f22203bcb7c34c34a7f9ce530daf`
 
-- [ ] **Target 2: TESS-EB TIC 327583823** (TIC 327583823)
+- [x] **Target 2: TESS-EB TIC 327583823** (TIC 327583823)
   * **Benchmark Set:** Set A
   * **Ground Truth:** `NON_PLANET` (PRSA_EB)
   * **Orbital Period:** 1.8126 days
@@ -35,7 +35,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0017/0000/0003/2758/3823/tess2019279210107-s0017-0000000327583823-0161-s_lc.fits`
   * **Primary SHA-256:** `90c8f1ee85fb1757307960eb719c44dd2f845e7ce204a978d2c72e8f3f6a7539`
 
-- [ ] **Target 3: TESS-EB TIC 366517381** (TIC 366517381)
+- [x] **Target 3: TESS-EB TIC 366517381** (TIC 366517381)
   * **Benchmark Set:** Set A
   * **Ground Truth:** `NON_PLANET` (PRSA_EB)
   * **Orbital Period:** 0.5446 days
@@ -71,7 +71,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
   * **SPOC FITS Key:** `tess/public/tid/s0038/0000/0001/9027/1688/tess2021118034608-s0038-0000000190271688-0209-s_lc.fits`
   * **Primary SHA-256:** `4896c5c51f917b3ffe03bc701f97f7d0cd038b840eac7127d1854a0ce4bd0fd8`
 
-- [ ] **Target 6: TESS-EB TIC 207511576** (TIC 207511576)
+- [x] **Target 6: TESS-EB TIC 207511576** (TIC 207511576)
   * **Benchmark Set:** Set A
   * **Ground Truth:** `NON_PLANET` (PRSA_EB)
   * **Orbital Period:** 1.3680 days
@@ -135,7 +135,7 @@ The following 10 targets were sampled using protocol PRNG seed `7319042` for ind
 
 ## Audit record (updated 2026-11-07)
 - ExoFOP pages for all 10 targets were opened and read by Arman Bisht on 2026-10-27. Checked on the pages: TIC ID, Tmag, TOI period and planet status (confirmed planet, no confirmed planet, or no TOI). For the 4 eclipsing-binary rows (TIC 307216760, 327583823, 366517381, 207511576) ExoFOP shows no TOI, so their period and depth are NOT covered by this check.
-- VizieR check of the period for the 4 eclipsing-binary rows: PENDING.
+- VizieR check (Harvard mirror, columns Tmag, Per and Dp-pf) of the 4 eclipsing-binary rows: completed by Arman Bisht on 2026-11-08; periods and Tmag match the Prsa et al. 2022 catalog; the depth of TIC 207511576 shows as 0.000 at the displayed precision, consistent with the 235 ppm in the table. All four have Morph coefficient 0.59-0.85 (ellipsoidal/contact-like).
 - NASA TOI table (downloaded 2026-10-31, SHA-256 c42771b98de943da7103d1b10accbf7b2cfac3288ed2cbc241593d59c27e1c28, stored in benchmark_v2/reference): all 90 TOI rows in Sets A and B match on TIC, disposition, period, depth, Tmag and stellar radius. This comparison was run by an AI assistant (Claude) on the downloaded file. The benchmark was built from the same table, so it checks transcription, not the source itself.
-- credited_sibling_periods for the 14 multi-TOI rows were compared with the table by Arman Bisht on 2026-11-07 (all matched).
+- credited_sibling_periods for the 14 multi-TOI rows: output printed by Arman Bisht on 2026-11-07 and compared against a table derived independently from the NASA file by an AI assistant (Claude); all 14 matched.
 - Stellar mass: TOI 303.01 was checked directly on ExoFOP (TIC mass 1.0 +/- 0.128).
